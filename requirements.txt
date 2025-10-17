@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+selenium
+webdriver-manager
+beautifulsoup4
+requests
+dnspython
+python-whois
+urllib3

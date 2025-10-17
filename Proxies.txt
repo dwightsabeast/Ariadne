@@ -1,0 +1,5 @@
+Add your proxy addresses here, one per line.
+The format should be: http://user:pass@host:port or http://host:port
+Example:
+https://www.google.com/search?q=http://127.0.0.1:8080
+https://www.google.com/search?q=http://user:password%40proxy.example.com:8000

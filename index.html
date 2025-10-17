@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ariadne</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #d1d5db;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #3b82f6;
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .result-item:hover {
+            background-color: #374151;
+        }
+        .hidden { display: none; }
+        /* Styles for the modal */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 40;
+        }
+        .modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+        }
+        /* D3 Sitemap Styles */
+        .sitemap-container .link {
+            fill: none;
+            stroke: #555;
+            stroke-width: 1.5px;
+        }
+        .sitemap-container .node circle {
+            fill: #1f2937;
+            stroke: #3b82f6;
+            stroke-width: 2px;
+        }
+        .sitemap-container .node text {
+            font-size: 12px;
+            fill: #d1d5db;
+        }
+        .sitemap-container .node {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app-container" class="max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div class="w-28"></div> <!-- Spacer to balance the buttons on the right -->
+            <div class="text-center flex-grow">
+                <h1 class="text-3xl font-bold text-gray-100">Ariadne</h1>
+                <p class="text-gray-400 mt-1">A comprehensive tool for site and subdomain discovery.</p>
+            </div>
+            <div class="flex items-center space-x-2 w-28 justify-end">
+                <button id="about-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="About this Tool">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+                <button id="proxy-settings-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Proxy Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8m-4-4v2m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
+                <input type="text" id="url-input" placeholder="Enter a URL or domain (e.g., https://example.com)" class="flex-grow w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-gray-200 border-gray-600">
+                <div class="flex items-center gap-2">
+                    <label for="depth-input" class="text-sm font-medium">Depth:</label>
+                     <span class="cursor-help text-gray-400 font-bold" title="Scan depth determines how many 'clicks' deep the scanner will go. Depth=1 scans the starting page. Depth=2 scans that page and all pages linked from it.">[?]</span>
+                    <input type="number" id="depth-input" value="1" min="1" max="5" class="w-20 px-3 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                </div>
+            </div>
+            <div class="flex items-center mt-3">
+                <input type="checkbox" id="follow-external-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="follow-external-checkbox" class="ml-2 text-sm text-gray-300">Follow External Links</label>
+            </div>
+            <p class="text-xs text-yellow-400 mt-3 text-center sm:text-left">Note: Scans with a depth greater than 1 may take significantly longer to complete.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <button id="scan-button" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Scan Site</button>
+                <button id="subdomain-button" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">Find Subdomains</button>
+            </div>
+        </div>
+
+        <div id="loading-spinner" class="hidden my-6 flex justify-center"><div class="spinner"></div></div>
+        <p id="error-message" class="my-4 text-center text-red-500 font-medium"></p>
+        
+        <div id="results-container" class="bg-gray-800 mt-6 p-6 rounded-lg shadow-lg border border-gray-700 hidden">
+            <div class="flex justify-between items-center mb-4">
+                 <div class="flex items-center">
+                    <h2 class="text-2xl font-bold text-gray-100" id="results-title">Results</h2>
+                    <div id="select-all-container" class="ml-6 hidden">
+                        <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <label for="select-all-checkbox" class="ml-2 text-sm text-gray-300">Select All</label>
+                    </div>
+                </div>
+                <div class="flex gap-2 flex-wrap">
+                    <button id="sitemap-btn" class="hidden bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition">View Map</button>
+                    <button id="export-csv-btn" class="hidden bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">Export Selected</button>
+                    <button id="archive-all-btn" class="hidden bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition">Archive Selected</button>
+                </div>
+            </div>
+            <p class="text-gray-400 mb-4" id="results-summary"></p>
+            <div id="results-list" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div id="analysis-container" class="bg-gray-800 mt-6 p-6 rounded-lg shadow-lg border border-gray-700 hidden">
+             <h2 class="text-2xl font-bold text-gray-100 mb-4">Analysis Tools</h2>
+             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                 <button id="tech-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Detect Tech (Main URL)</button>
+                 <button id="headers-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Analyze Headers (Main URL)</button>
+                 <button id="links-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Check All For Broken Links</button>
+             </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="sitemap-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 h-5/6">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold" id="sitemap-modal-title">Visual Sitemap</h3>
+                <button id="close-sitemap-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div id="sitemap-container" class="relative w-full h-full p-4 overflow-auto sitemap-container">
+                <div id="sitemap-legend" class="absolute top-2 left-2 bg-gray-900 bg-opacity-80 p-3 rounded-md text-xs text-gray-300 border border-gray-700 z-10"></div>
+                <svg id="sitemap-svg" width="100%"></svg>
+            </div>
+        </div>
+    </div>
+    
+    <div id="analysis-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2">
+             <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold" id="analysis-modal-title">Analysis Results</h3>
+                <button id="close-analysis-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div id="analysis-modal-body" class="p-6 max-h-96 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <div id="proxy-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2">
+             <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold">Proxy Settings</h3>
+                <button id="close-proxy-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div class="p-6">
+                <label for="proxy-textarea" class="block text-sm font-medium text-gray-300 mb-2">Enter proxies, one per line (e.g., http://user:pass@host:port)</label>
+                <textarea id="proxy-textarea" rows="10" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
+                <p id="proxy-status-message" class="text-sm mt-2"></p>
+                <div class="mt-4 flex justify-end">
+                    <button id="save-proxy-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save Proxies</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="about-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
+             <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold">About Ariadne</h3>
+                <button id="close-about-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div id="about-modal-body" class="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Main Scanning Features</h4>
+                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. It uses a three-stage process: first, it looks for a <code>sitemap.xml</code> file. If not found, it launches an automated browser to crawl the site by following hyperlinks, simulating user scrolling to find dynamically loaded content. Finally, it analyzes the site's JavaScript files to discover hidden paths.</p>
+                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain using several advanced techniques, including checking Certificate Transparency logs, performing various DNS lookups (MX, NS), and using Reverse DNS lookups.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Scan Options</h4>
+                    <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to. Higher depths can significantly increase scan time.</p>
+                    <p class="text-sm mt-1"><strong>Follow External Links:</strong> When checked, this allows the 'Scan Site' crawler to follow hyperlinks to different websites, up to the specified depth.</p>
+                </div>
+                 <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
+                    <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select specific items using the checkboxes.</p>
+                    <p class="text-sm mt-1"><strong>Export/Archive Selected:</strong> Allows you to save the selected items to a CSV file. You can also submit pages to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a> for preservation.</p>
+                     <p class="text-sm mt-1"><strong>Individual Actions (Scan, Tech, Headers):</strong> Buttons next to each result allow you to perform actions on that specific item, such as initiating a new scan on a subdomain or running a detailed analysis.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Visual Maps</h4>
+                    <p class="text-sm mt-1"><strong>View Map:</strong> After a scan, this button generates an interactive visual sitemap or subdomain map. Nodes on the map are clickable and will open the corresponding URL in a new tab.</p>
+                    <p class="text-sm mt-1"><strong>Map Legend:</strong> Provides key information about the scanned host, including its IP address, domain provider, the number of items found, and the total scan time.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Analysis Tools</h4>
+                    <p class="text-sm mt-1"><strong>Detect Tech:</strong> Analyzes a URL to identify the web technologies it is built with (e.g., WordPress, React).</p>
+                    <p class="text-sm mt-1"><strong>Analyze Headers:</strong> Inspects a URL's HTTP response to check for important security headers.</p>
+                    <p class="text-sm mt-1"><strong>Check All For Broken Links:</strong> Tests every link found during a site scan to see if it leads to a "404 Not Found" error.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Configuration</h4>
+                    <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Allows you to provide a list of proxy servers. When archiving pages, the tool will rotate through this list to avoid being rate-limited by the Internet Archive.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5010';
+        let currentResults = [];
+        let scanSummaryData = null;
+        let scanStartTime = 0;
+        let currentScanType = '';
+
+        // DOM Elements
+        const urlInput = document.getElementById('url-input');
+        const depthInput = document.getElementById('depth-input');
+        const followExternalCheckbox = document.getElementById('follow-external-checkbox');
+        const scanButton = document.getElementById('scan-button');
+        const subdomainButton = document.getElementById('subdomain-button');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const resultsContainer = document.getElementById('results-container');
+        const resultsTitle = document.getElementById('results-title');
+        const resultsSummary = document.getElementById('results-summary');
+        const resultsList = document.getElementById('results-list');
+        const errorMessage = document.getElementById('error-message');
+        const exportCsvBtn = document.getElementById('export-csv-btn');
+        const archiveAllBtn = document.getElementById('archive-all-btn');
+        const sitemapBtn = document.getElementById('sitemap-btn');
+        const analysisContainer = document.getElementById('analysis-container');
+        const techBtn = document.getElementById('tech-btn');
+        const headersBtn = document.getElementById('headers-btn');
+        const linksBtn = document.getElementById('links-btn');
+        const selectAllContainer = document.getElementById('select-all-container');
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        
+        // Modals
+        const sitemapModal = document.getElementById('sitemap-modal');
+        const sitemapModalTitle = document.getElementById('sitemap-modal-title');
+        const closeSitemapModalBtn = document.getElementById('close-sitemap-modal-btn');
+        const analysisModal = document.getElementById('analysis-modal');
+        const analysisModalTitle = document.getElementById('analysis-modal-title');
+        const analysisModalBody = document.getElementById('analysis-modal-body');
+        const closeAnalysisModalBtn = document.getElementById('close-analysis-modal-btn');
+        const proxyModal = document.getElementById('proxy-modal');
+        const proxySettingsBtn = document.getElementById('proxy-settings-btn');
+        const closeProxyModalBtn = document.getElementById('close-proxy-modal-btn');
+        const proxyTextarea = document.getElementById('proxy-textarea');
+        const saveProxyBtn = document.getElementById('save-proxy-btn');
+        const proxyStatusMessage = document.getElementById('proxy-status-message');
+        const aboutModal = document.getElementById('about-modal');
+        const aboutBtn = document.getElementById('about-btn');
+        const closeAboutModalBtn = document.getElementById('close-about-modal-btn');
+
+
+        function setUILoading(isLoading) {
+            loadingSpinner.classList.toggle('hidden', !isLoading);
+            scanButton.disabled = isLoading;
+            subdomainButton.disabled = isLoading;
+            if (isLoading) {
+                errorMessage.textContent = '';
+                resultsContainer.classList.add('hidden');
+                analysisContainer.classList.add('hidden');
+                scanSummaryData = null; 
+            }
+        }
+
+        function showActionButtons(hasResults) {
+            exportCsvBtn.classList.toggle('hidden', !hasResults);
+            archiveAllBtn.classList.toggle('hidden', !hasResults);
+            sitemapBtn.classList.toggle('hidden', !hasResults);
+            analysisContainer.classList.toggle('hidden', !hasResults);
+            selectAllContainer.classList.toggle('hidden', !hasResults);
+            updateActionButtonsState();
+        }
+
+        function updateActionButtonsState() {
+            const selectedCount = document.querySelectorAll('.result-checkbox:checked').length;
+            const disabled = selectedCount === 0;
+            
+            exportCsvBtn.disabled = disabled;
+            archiveAllBtn.disabled = disabled;
+            exportCsvBtn.classList.toggle('opacity-50', disabled);
+            archiveAllBtn.classList.toggle('opacity-50', disabled);
+        }
+
+        function displayStaticResults(title, items, summaryPrefix) {
+            resultsContainer.classList.remove('hidden');
+            resultsTitle.textContent = title;
+            resultsList.innerHTML = ''; 
+            resultsSummary.textContent = `${summaryPrefix} ${items.length} unique items.`;
+            currentResults = items;
+
+            showActionButtons(items.length > 0);
+
+            if (items.length === 0) {
+                resultsList.innerHTML = '<p>No items found.</p>';
+                return;
+            }
+
+            items.forEach((item, index) => {
+                addResultItem(item, index);
+            });
+            updateActionButtonsState();
+        }
+        
+        function addResultItem(item, index) {
+            const div = document.createElement('div');
+            div.className = 'result-item flex items-center justify-between p-2 rounded transition';
+            
+            let displayName, linkUrl;
+            let actionsHtml = `<span id="status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0"></span>`;
+
+            if (currentScanType === 'sitemap') {
+                displayName = item;
+                linkUrl = item;
+                actionsHtml += `
+                    <button onclick="runSingleTechAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
+                    <button onclick="runSingleHeaderAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
+                `;
+            } else if (currentScanType === 'subdomain') {
+                 displayName = `${item.name} <span class="text-xs text-gray-400 ml-2">(${item.type})</span>`;
+                 linkUrl = item.name;
+                 actionsHtml += `<button onclick="scanSubdomain('${linkUrl}')" class="ml-4 bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition">Scan</button>`;
+            } else {
+                 displayName = (typeof item === 'string') ? item : item.name;
+                 linkUrl = displayName;
+            }
+
+            actionsHtml += `<button id="retry-${index}" class="hidden ml-2 bg-yellow-500 text-white px-2 py-1 text-xs rounded hover:bg-yellow-600 transition">Retry</button>`;
+            
+            const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`;
+
+            div.innerHTML = `
+                <div class="flex items-center truncate mr-4">
+                    <input type="checkbox" class="result-checkbox h-4 w-4 rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500 mr-4" data-link='${linkUrl}'>
+                    <a href="${fullUrl}" target="_blank" class="text-blue-500 hover:underline">${displayName}</a>
+                </div>
+                <div class="flex items-center flex-shrink-0">
+                    ${actionsHtml}
+                </div>
+            `;
+            
+            resultsList.appendChild(div);
+
+            const retryButton = div.querySelector(`#retry-${index}`);
+            retryButton.onclick = () => retryArchive(linkUrl, index);
+        }
+
+        function scanSubdomain(subdomain) {
+            urlInput.value = subdomain;
+            performStreamingScan();
+        }
+
+        function getDomainName(url) {
+            try {
+                let fullUrl = url.trim();
+                if (!/^[a-zA-Z]+:\/\//.test(fullUrl)) fullUrl = 'http://' + fullUrl;
+                return new URL(fullUrl).hostname.replace(/^www\./, '');
+            } catch (error) {
+                return url.trim().replace(/^www\./, '').split('/')[0];
+            }
+        }
+
+        async function fetchIpAddress(domain) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-ip`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain }),
+                });
+                if (!response.ok) return 'Error';
+                const data = await response.json();
+                return data.ip_address || 'Not found';
+            } catch (err) { return 'N/A'; }
+        }
+
+        async function fetchRegistrar(domain) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-registrar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain }),
+                });
+                if (!response.ok) return 'Error';
+                const data = await response.json();
+                return data.registrar || 'Not found';
+            } catch (err) { return 'N/A'; }
+        }
+        
+        function performStreamingScan() {
+            const url = urlInput.value;
+            if (!url) {
+                errorMessage.textContent = 'Please enter a URL.';
+                return;
+            }
+            
+            currentScanType = 'sitemap';
+            setUILoading(true);
+            resultsContainer.classList.remove('hidden');
+            resultsTitle.textContent = 'Scan in Progress...';
+            resultsSummary.textContent = 'Waiting for results...';
+            resultsList.innerHTML = '';
+            currentResults = [];
+            scanStartTime = Date.now();
+
+            const followExternal = followExternalCheckbox.checked;
+            const params = new URLSearchParams({ url, depth: depthInput.value, follow_external: followExternal });
+            const eventSource = new EventSource(`${API_BASE_URL}/scan?${params.toString()}`);
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    errorMessage.textContent = `Error: ${data.error}`;
+                    eventSource.close();
+                    setUILoading(false);
+                } else if (data.status) {
+                     resultsSummary.textContent = data.status;
+                } else if (data.link) {
+                    if (!currentResults.includes(data.link)) {
+                        currentResults.push(data.link);
+                        addResultItem(data.link, currentResults.length - 1);
+                        resultsSummary.textContent = `Found ${currentResults.length} unique items...`;
+                    }
+                }
+            };
+
+            eventSource.addEventListener('end', async function(event) {
+                eventSource.close();
+                setUILoading(false);
+                const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
+                resultsTitle.textContent = "Scan Complete";
+                resultsSummary.textContent = `Scan finished in ${scanDuration}s. Found ${currentResults.length} unique items.`;
+                
+                const hostname = getDomainName(urlInput.value);
+                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
+
+                scanSummaryData = { hostname, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
+                showActionButtons(currentResults.length > 0);
+            });
+
+            eventSource.onerror = function(err) {
+                errorMessage.textContent = 'An error occurred. The connection may have been lost.';
+                eventSource.close();
+                setUILoading(false);
+            };
+        }
+        
+        async function performSubdomainSearch() {
+            const url = urlInput.value;
+            if (!url) {
+                errorMessage.textContent = 'Please enter a domain.';
+                return;
+            }
+            
+            currentScanType = 'subdomain';
+            setUILoading(true);
+            const scanStartTime = Date.now();
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/find-subdomains`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain: getDomainName(url) }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                displayStaticResults("Found Subdomains", data.subdomains, "Found");
+            } catch (err) {
+                errorMessage.textContent = `Error: ${err.message}`;
+            } finally {
+                const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
+                const hostname = getDomainName(urlInput.value);
+                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
+                scanSummaryData = { hostname, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
+                setUILoading(false);
+            }
+        }
+        
+        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        async function retryArchive(link, index) {
+            const statusSpan = document.getElementById(`status-${index}`);
+            const retryBtn = document.getElementById(`retry-${index}`);
+
+            if (statusSpan) {
+                statusSpan.textContent = 'Retrying...';
+                statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
+            }
+            if (retryBtn) retryBtn.classList.add('hidden');
+
+            try {
+                const fullUrl = link.startsWith('http') ? link : `https://${link}`;
+                const response = await fetch(`${API_BASE_URL}/archive-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: fullUrl }),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Archive failed again');
+                }
+
+                if (statusSpan) {
+                    statusSpan.textContent = 'Saved!';
+                    statusSpan.className = 'text-sm font-medium text-green-500 flex-shrink-0';
+                }
+            } catch (err) {
+                if (statusSpan) {
+                    statusSpan.textContent = 'Failed!';
+                    statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
+                    statusSpan.title = err.message;
+                }
+                if (retryBtn) retryBtn.classList.remove('hidden');
+            }
+        }
+
+        async function archiveSelectedResults() {
+            const selectedCheckboxes = Array.from(document.querySelectorAll('.result-checkbox:checked'));
+            if (selectedCheckboxes.length === 0) {
+                alert("Please select items to archive.");
+                return;
+            }
+
+            const itemsToArchive = selectedCheckboxes.map(cb => {
+                const link = cb.dataset.link;
+                const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
+                const originalIndex = currentResults.indexOf(originalItem);
+                return { link, index: originalIndex };
+            });
+
+            archiveAllBtn.disabled = true;
+            let successCount = 0; let errorCount = 0;
+            
+            for (const item of itemsToArchive) {
+                const link = item.link;
+                const fullUrl = link.startsWith('http') ? link : `https://${link}`;
+                archiveAllBtn.textContent = `Archiving ${successCount + errorCount + 1} of ${itemsToArchive.length}...`;
+
+                const statusSpan = document.getElementById(`status-${item.index}`);
+                const retryBtn = document.getElementById(`retry-${item.index}`);
+
+                if (statusSpan) {
+                    statusSpan.textContent = 'Archiving...';
+                    statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
+                }
+                if(retryBtn) retryBtn.classList.add('hidden');
+
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/archive-url`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: fullUrl }),
+                    });
+                     if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Archive failed');
+                    }
+                    successCount++;
+                    if (statusSpan) {
+                        statusSpan.textContent = 'Saved!';
+                        statusSpan.className = 'text-sm font-medium text-green-500 flex-shrink-0';
+                    }
+                } catch (err) {
+                    errorCount++;
+                    if (statusSpan) {
+                        statusSpan.textContent = 'Failed!';
+                        statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
+                        statusSpan.title = err.message;
+                    }
+                    if (retryBtn) retryBtn.classList.remove('hidden');
+                }
+                await sleep(2000); 
+            }
+            archiveAllBtn.textContent = `Archiving Complete (${successCount} saved, ${errorCount} failed)`;
+            archiveAllBtn.disabled = false;
+        }
+
+        function generateSitemap(items) {
+            const svg = d3.select("#sitemap-svg");
+            svg.selectAll("*").remove(); 
+            if (items.length === 0) return;
+            const rootName = getDomainName(urlInput.value);
+            const root = { name: rootName, children: [] };
+            
+            if (currentScanType === 'sitemap') {
+                 items.forEach(link => {
+                    try {
+                        const url = new URL(link);
+                        const pathParts = url.pathname.split('/').filter(p => p.length > 0);
+                        let currentNode = root;
+                        pathParts.forEach(part => {
+                            let childNode = currentNode.children.find(child => child.name === part);
+                            if (!childNode) { childNode = { name: part, children: [] }; currentNode.children.push(childNode); }
+                            currentNode = childNode;
+                        });
+                    } catch (e) { console.error(`Invalid URL: ${link}`, e); }
+                });
+            } else if (currentScanType === 'subdomain') {
+                items.forEach(item => {
+                    const parts = item.name.replace(`.${rootName}`, '').split('.').reverse();
+                    let currentNode = root;
+                    parts.forEach((part, index) => {
+                        let childNode = currentNode.children.find(child => child.name === part);
+                        if (!childNode) {
+                            childNode = { name: part, type: (index === parts.length - 1) ? item.type : undefined, fullName: (index === parts.length - 1) ? item.name : undefined, children: [] };
+                            currentNode.children.push(childNode);
+                        }
+                        currentNode = childNode;
+                    });
+                });
+            }
+            
+            const nodes = d3.hierarchy(root).descendants();
+            const nodeHeight = 25;
+            const dynamicHeight = Math.max(nodes.length * nodeHeight, document.getElementById('sitemap-container').clientHeight);
+            
+            svg.attr('height', dynamicHeight);
+
+            const container = document.getElementById('sitemap-container');
+            const width = container.clientWidth;
+            
+            const treeLayout = d3.tree().size([dynamicHeight - 40, width - 200]);
+            const rootNode = d3.hierarchy(root);
+            treeLayout(rootNode);
+
+            const g = svg.append("g").attr("transform", "translate(100,20)");
+            g.selectAll(".link").data(rootNode.links()).enter().append("path").attr("class", "link").attr("d", d3.linkHorizontal().x(d => d.y).y(d => d.x));
+            
+            const node = g.selectAll(".node")
+                .data(rootNode.descendants())
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${d.y},${d.x})`)
+                .on("click", (event, d) => {
+                    if (d.parent === null) return;
+
+                    let fullUrl;
+                    const rootName = getDomainName(urlInput.value);
+
+                    if (currentScanType === 'sitemap') {
+                        const path = d.ancestors().reverse().map(n => n.data.name).slice(1).join('/');
+                        fullUrl = `https://${rootName}/${path}`;
+                    } else if (currentScanType === 'subdomain') {
+                        if (d.data.fullName) {
+                            fullUrl = `https://${d.data.fullName}`;
+                        }
+                    }
+
+                    if (fullUrl) {
+                        window.open(fullUrl, '_blank');
+                    }
+                });
+
+            node.append("circle").attr("r", 5);
+            node.append("text").attr("dy", "0.31em").attr("x", d => d.children ? -8 : 8).attr("text-anchor", d => d.children ? "end" : "start").text(d => d.data.type ? `${d.data.name} (${d.data.type})` : d.data.name);
+            svg.call(d3.zoom().on("zoom", (event) => g.attr("transform", event.transform)));
+        }
+        
+        // --- Analysis Functions ---
+
+        async function runAnalysis(endpoint, title, payload) {
+            analysisModalTitle.textContent = `Loading ${title}...`;
+            analysisModalBody.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+            analysisModal.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Analysis failed');
+
+                analysisModalTitle.textContent = title;
+                let html = '';
+                
+                if (endpoint === '/detect-tech') {
+                    if (data.technologies && data.technologies.length > 0) {
+                        html = `<ul class="list-disc list-inside space-y-2">`;
+                        data.technologies.forEach(tech => { html += `<li>${tech}</li>`; });
+                        html += `</ul>`;
+                    } else {
+                        html = '<p>No specific technologies detected.</p>';
+                    }
+                } else if (endpoint === '/analyze-headers') {
+                    html = `<dl class="space-y-2">`;
+                    for (const [header, status] of Object.entries(data.headers)) {
+                         const statusColor = status === 'Present' ? 'text-green-400' : 'text-red-400';
+                         html += `<div class="flex justify-between"><dt class="font-medium">${header}:</dt><dd class="${statusColor}">${status}</dd></div>`;
+                    }
+                    html += `</dl>`;
+                } else if (endpoint === '/check-links') {
+                    const brokenLinks = Object.entries(data.link_statuses).filter(([_, status]) => status !== 200);
+                     if (brokenLinks.length > 0) {
+                        html = `<ul class="list-disc list-inside space-y-2">`;
+                        brokenLinks.forEach(([link, status]) => { 
+                            const statusText = status === 'Error' ? 'Network Error' : `Status ${status}`;
+                            html += `<li><span class="font-medium">${statusText}:</span> <a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`; 
+                        });
+                        html += `</ul>`;
+                    } else {
+                        html = '<p>No broken links found!</p>';
+                    }
+                }
+                
+                analysisModalBody.innerHTML = html;
+
+            } catch (err) {
+                analysisModalBody.innerHTML = `<p class="text-red-500">${err.message}</p>`;
+            }
+        }
+        
+        function runSingleTechAnalysis(url) {
+            runAnalysis('/detect-tech', `Technology Stack for ${url}`, { url });
+        }
+
+        function runSingleHeaderAnalysis(url) {
+            runAnalysis('/analyze-headers', `Security Headers for ${url}`, { url });
+        }
+
+
+        // --- Event Listeners ---
+        exportCsvBtn.addEventListener('click', () => {
+            const selectedCheckboxes = document.querySelectorAll('.result-checkbox:checked');
+            if (selectedCheckboxes.length === 0) {
+                alert("Please select items to export.");
+                return;
+            }
+            
+            const selectedItems = Array.from(selectedCheckboxes).map(cb => {
+                const link = cb.dataset.link;
+                if (currentScanType === 'subdomain') return currentResults.find(item => item.name === link);
+                return link;
+            });
+
+            const domain = getDomainName(urlInput.value) || 'scan_results';
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `${domain}_${timestamp}.csv`;
+            let csvContent = "data:text/csv;charset=utf-8,";
+            
+            if(currentScanType === 'subdomain') {
+                csvContent += "Subdomain,Record Type\r\\n";
+                selectedItems.forEach(item => { csvContent += `${item.name},${item.type}\r\\n`; });
+            } else {
+                csvContent += "Found Sites\r\\n";
+                selectedItems.forEach(link => { csvContent += `${link}\r\\n`; });
+            }
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+        
+        archiveAllBtn.addEventListener('click', archiveSelectedResults);
+        scanButton.addEventListener('click', performStreamingScan);
+        subdomainButton.addEventListener('click', performSubdomainSearch);
+        
+        sitemapBtn.addEventListener('click', () => {
+            const legend = document.getElementById('sitemap-legend');
+            const mapTitle = document.getElementById('sitemap-modal-title');
+            
+            if (currentScanType === 'sitemap') {
+                mapTitle.textContent = 'Visual Sitemap';
+                sitemapBtn.textContent = 'View Sitemap';
+            } else {
+                mapTitle.textContent = 'Visual Subdomain Map';
+                sitemapBtn.textContent = 'View Subdomain Map';
+            }
+
+            if (scanSummaryData) {
+                legend.innerHTML = `
+                    <h4 class="font-bold text-sm mb-2">Scan Info</h4>
+                    <p><strong>Host:</strong> ${scanSummaryData.hostname}</p>
+                    <p><strong>IP Address:</strong> ${scanSummaryData.ip_address}</p>
+                    <p><strong>Provider:</strong> ${scanSummaryData.registrar}</p>
+                    <p><strong>Items Found:</strong> ${scanSummaryData.page_count}</p>
+                    <p><strong>Scan Time:</strong> ${scanSummaryData.scan_duration}s</p>
+                `;
+            } else {
+                legend.innerHTML = '<p>Scan summary not available.</p>';
+            }
+
+            sitemapModal.classList.remove('hidden');
+            setTimeout(() => { generateSitemap(currentResults); }, 100); 
+        });
+
+        resultsList.addEventListener('change', (event) => {
+            if (event.target.classList.contains('result-checkbox')) {
+                updateActionButtonsState();
+            }
+        });
+
+        selectAllCheckbox.addEventListener('change', (event) => {
+            document.querySelectorAll('.result-checkbox').forEach(checkbox => {
+                checkbox.checked = event.target.checked;
+            });
+            updateActionButtonsState();
+        });
+        
+        closeSitemapModalBtn.addEventListener('click', () => sitemapModal.classList.add('hidden'));
+        closeAnalysisModalBtn.addEventListener('click', () => analysisModal.classList.add('hidden'));
+        
+        proxySettingsBtn.addEventListener('click', async () => {
+            proxyModal.classList.remove('hidden');
+            proxyStatusMessage.textContent = '';
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-proxies`);
+                const data = await response.json();
+                proxyTextarea.value = data.proxies;
+            } catch(e) {
+                proxyStatusMessage.textContent = 'Error loading proxies.';
+                proxyStatusMessage.className = 'text-sm mt-2 text-red-500';
+            }
+        });
+        closeProxyModalBtn.addEventListener('click', () => proxyModal.classList.add('hidden'));
+        saveProxyBtn.addEventListener('click', async () => {
+            const proxies = proxyTextarea.value;
+            try {
+                const response = await fetch(`${API_BASE_URL}/update-proxies`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proxies }),
+                });
+                const data = await response.json();
+                if(response.ok) {
+                    proxyStatusMessage.textContent = data.message;
+                    proxyStatusMessage.className = 'text-sm mt-2 text-green-500';
+                } else {
+                    throw new Error(data.error || 'Failed to save');
+                }
+            } catch (e) {
+                proxyStatusMessage.textContent = e.message;
+                proxyStatusMessage.className = 'text-sm mt-2 text-red-500';
+            }
+        });
+
+        aboutBtn.addEventListener('click', () => aboutModal.classList.remove('hidden'));
+        closeAboutModalBtn.addEventListener('click', () => aboutModal.classList.add('hidden'));
+
+        techBtn.addEventListener('click', () => runAnalysis('/detect-tech', 'Technology Stack', { url: urlInput.value }));
+        headersBtn.addEventListener('click', () => runAnalysis('/analyze-headers', 'Security Headers', { url: urlInput.value }));
+        linksBtn.addEventListener('click', () => {
+            const urlsToCheck = currentResults.map(item => typeof item === 'string' ? item : item.name);
+            runAnalysis('/check-links', 'Broken Link Check', { urls: urlsToCheck });
+        });
+        
+    </script>
+</body>
+</html>
+
