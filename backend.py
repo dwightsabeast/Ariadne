@@ -20,15 +20,43 @@ import xml.etree.ElementTree as ET
 import json
 import whois 
 import itertools
+import urllib3
+import difflib
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+# Suppress only the single InsecureRequestWarning from urllib3 needed for this specific app
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
 
-# Global variable to hold the proxy list and a cycle iterator
+# Global variables
 PROXY_LIST = []
 PROXY_CYCLE = None
+PROXIES_ENABLED = True
+SETTINGS_FILE = 'settings.json'
+
+def load_settings():
+    """Loads settings from the settings file."""
+    global PROXIES_ENABLED
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            settings = json.load(f)
+            PROXIES_ENABLED = settings.get('proxies_enabled', True)
+        print(f"Settings loaded: Proxies enabled -> {PROXIES_ENABLED}")
+    except (FileNotFoundError, json.JSONDecodeError):
+        print(f"{SETTINGS_FILE} not found or invalid. Creating with default settings.")
+        PROXIES_ENABLED = True
+        save_settings()
+
+def save_settings():
+    """Saves the current settings to the settings file."""
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump({'proxies_enabled': PROXIES_ENABLED}, f, indent=4)
+    print(f"Settings saved: Proxies enabled -> {PROXIES_ENABLED}")
+
 
 def load_proxies():
     """Loads proxies from proxies.txt into the global proxy cycle."""
@@ -84,13 +112,13 @@ def get_chrome_driver():
 def find_links_in_js(session, base_url, domain, follow_external):
     js_links = set()
     try:
-        response = session.get(base_url)
+        response = session.get(base_url, verify=False)
         soup = BeautifulSoup(response.text, 'html.parser')
         for script in soup.find_all('script', src=True):
             script_url = urljoin(base_url, script['src'])
             if follow_external or get_domain_name(script_url) == domain:
                 try:
-                    js_content = session.get(script_url, timeout=5).text
+                    js_content = session.get(script_url, timeout=5, verify=False).text
                     paths = re.findall(r'[\'"](/[\w\d/.-]+)[\'"]', js_content)
                     for path in paths:
                         js_links.add(urljoin(base_url, path))
@@ -128,7 +156,7 @@ def scan_site():
             robots_url = urljoin(url, '/robots.txt')
             sitemap_urls = []
             try:
-                r = requests.get(robots_url, timeout=5)
+                r = requests.get(robots_url, timeout=5, verify=False)
                 if r.ok:
                     for line in r.text.splitlines():
                         if line.lower().startswith('sitemap:'):
@@ -141,7 +169,7 @@ def scan_site():
 
             for sitemap_url in sitemap_urls:
                 try:
-                    r = requests.get(sitemap_url, timeout=5)
+                    r = requests.get(sitemap_url, timeout=5, verify=False)
                     if r.ok:
                         yield yield_event({"status": f"Parsing sitemap: {sitemap_url}"})
                         tree = ET.fromstring(r.content)
@@ -231,7 +259,7 @@ def find_subdomains_endpoint():
     found_subdomains = set()
 
     try:
-        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15)
+        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15, verify=False)
         if response.ok:
             for cert in response.json():
                 name_value = cert.get('name_value')
@@ -279,58 +307,132 @@ def find_subdomains_endpoint():
     return jsonify({"subdomains": results})
 
 
-@app.route('/archive-url', methods=['POST'])
+@app.route('/archive-url', methods=['GET'])
 def archive_url():
-    data = request.get_json()
-    url_to_archive = data.get('url')
+    url_to_archive = request.args.get('url')
     if not url_to_archive:
+        def error_gen():
+            yield f"data: {json.dumps({'error': 'URL is required'})}\n\n"
+            yield "event: end\n\n"
+        return Response(stream_with_context(error_gen()), mimetype='text/event-stream')
+
+    archive_api_url = f"https://web.archive.org/save/{url_to_archive}"
+    headers = {'User-Agent': 'Ariadne Scanner/1.3'}
+
+    def generate():
+        def yield_event(data):
+            return f"data: {json.dumps(data)}\n\n"
+
+        # If proxies are disabled or list is empty, connect directly.
+        if not PROXIES_ENABLED or not PROXY_LIST:
+            yield yield_event({"status": "No proxy enabled. Connecting directly..."})
+            try:
+                http_manager = urllib3.PoolManager(headers=headers, cert_reqs='CERT_NONE', retries=Retry(total=3, backoff_factor=1))
+                response = http_manager.request('GET', archive_api_url, timeout=30.0)
+                if response.status >= 400:
+                    raise urllib3.exceptions.HTTPError(f"Archive.org returned status {response.status}")
+                yield yield_event({"success": "Successfully submitted to Internet Archive."})
+            except Exception as e:
+                error_message = f"Failed to contact Internet Archive: {e}"
+                print(f"Error contacting Internet Archive directly: {e}")
+                yield yield_event({"error": error_message})
+            finally:
+                yield "event: end\n\n"
+            return
+
+        # --- Resilient Proxy Rotation Logic ---
+        num_proxies = len(PROXY_LIST)
+        for i in range(num_proxies):
+            proxy_line = next(PROXY_CYCLE).strip()
+            if not proxy_line:
+                continue
+
+            if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
+                proxy_line = 'http://' + proxy_line
+            
+            yield yield_event({"status": f"Trying proxy ({i+1}/{num_proxies})..."})
+            print(f"Attempting to use proxy: {proxy_line}")
+            
+            try:
+                http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+                response = http_manager.request('GET', archive_api_url, timeout=20.0)
+                
+                if response.status < 400:
+                    print(f"Proxy {proxy_line} successful!")
+                    yield yield_event({"success": "Successfully submitted to Internet Archive."})
+                    yield "event: end\n\n"
+                    return
+                else:
+                    status_message = f"Proxy failed with status {response.status}. Trying next..."
+                    print(status_message)
+                    yield yield_event({"status": status_message})
+
+            except urllib3.exceptions.ProxyError as e:
+                print(f"Proxy {proxy_line} failed: {e}. Trying next...")
+                yield yield_event({"status": "Proxy connection failed. Trying next..."})
+                continue
+            except Exception as e:
+                print(f"Proxy {proxy_line} encountered a general error: {e}. Trying next...")
+                yield yield_event({"status": "Proxy timeout. Trying next..."})
+                continue
+                
+        # If the loop completes, all proxies have failed.
+        final_error_message = "All available proxies failed to connect."
+        print(final_error_message)
+        yield yield_event({"error": final_error_message})
+        yield "event: end\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+@app.route('/check-diff', methods=['POST'])
+def check_diff():
+    data = request.get_json()
+    url = data.get('url')
+    if not url:
         return jsonify({"error": "URL is required"}), 400
 
     try:
-        archive_api_url = f"https://web.archive.org/save/{url_to_archive}"
-        
-        proxies = None
-        if PROXY_CYCLE:
-            proxy = next(PROXY_CYCLE)
-            proxies = {"http": proxy, "https": proxy}
+        # 1. Check for the latest snapshot from the Internet Archive CDX API
+        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&statuscode=200&limit=-1"
+        cdx_response = requests.get(cdx_url)
+        cdx_response.raise_for_status()
+        snapshots = cdx_response.json()
 
-        session = requests.Session()
-        retry_strategy = Retry(
-            total=3,  
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET"]
+        if len(snapshots) <= 1: # The first entry is the header
+            return jsonify({"has_changes": False, "message": "Not previously archived or no successful captures found."})
+
+        latest_timestamp = snapshots[-1][0]
+        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{url}"
+        
+        # 2. Fetch content of the archived version
+        archived_response = requests.get(archived_url, timeout=20)
+        archived_response.raise_for_status()
+        archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
+        archived_text = archived_soup.get_text()
+
+        # 3. Fetch content of the live version
+        live_response = requests.get(url, timeout=20, verify=False)
+        live_response.raise_for_status()
+        live_soup = BeautifulSoup(live_response.text, 'html.parser')
+        live_text = live_soup.get_text()
+
+        # 4. Compare the two versions
+        diff = difflib.HtmlDiff(wrapcolumn=80).make_table(
+            archived_text.splitlines(),
+            live_text.splitlines(),
+            fromdesc=f"Archived on {latest_timestamp}",
+            todesc="Live Version"
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("https://", adapter)
+        
+        if archived_text == live_text:
+             return jsonify({"has_changes": False, "message": "No significant changes detected since the last archive."})
+        else:
+             return jsonify({"has_changes": True, "diff_html": diff})
 
-        response = session.get(
-            archive_api_url, 
-            timeout=30, 
-            headers={'User-Agent': 'SiteScanner/1.0'}, 
-            verify=False,
-            proxies=proxies
-        )
-        
-        response.raise_for_status() 
-        
-        return jsonify({"message": "Successfully submitted to Internet Archive."})
-
-    except requests.exceptions.RequestException as e:
-        error_message = "An unknown network error occurred."
-        if hasattr(e, 'response') and e.response is not None:
-            status_code = e.response.status_code
-            if status_code == 429:
-                error_message = "Rate limited. Try again later."
-            elif status_code >= 500:
-                error_message = f"Archive.org server error ({status_code})."
-            else:
-                error_message = f"Archive.org returned status {status_code}."
-        elif "Max retries exceeded" in str(e):
-            error_message = "Connection failed after retries."
-        
-        print(f"Error contacting Internet Archive after retries: {e}")
-        return jsonify({"error": error_message}), 504
+    except requests.RequestException as e:
+        return jsonify({"error": f"Network error during diff check: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
 @app.route('/get-ip', methods=['POST'])
@@ -367,27 +469,42 @@ def get_registrar():
         print(f"Error during WHOIS lookup for {domain}: {e}")
         return jsonify({"registrar": "Error or not found"})
 
-@app.route('/get-proxies', methods=['GET'])
-def get_proxies():
+@app.route('/get-proxy-settings', methods=['GET'])
+def get_proxy_settings():
+    """Gets the proxy list and whether proxies are enabled."""
     try:
         with open('proxies.txt', 'r') as f:
             proxies_content = f.read()
-        return jsonify({"proxies": proxies_content})
     except FileNotFoundError:
-        return jsonify({"proxies": "# Add proxy addresses here, one per line."})
+        proxies_content = "# Add proxy addresses here, one per line (e.g., http://user:pass@host:port).\n"
+    
+    return jsonify({"proxies": proxies_content, "enabled": PROXIES_ENABLED})
 
-@app.route('/update-proxies', methods=['POST'])
-def update_proxies():
+
+@app.route('/update-proxy-settings', methods=['POST'])
+def update_proxy_settings():
+    """Updates the proxy list and the enabled/disabled state."""
+    global PROXIES_ENABLED
     data = request.get_json()
     proxies_content = data.get('proxies', '')
+    proxies_enabled_state = data.get('enabled', True)
+    
     try:
+        # Save the proxy list to its file
         with open('proxies.txt', 'w') as f:
             f.write(proxies_content)
-        load_proxies() # Reload proxies into memory
-        return jsonify({"message": "Proxy list saved successfully."})
+        
+        # Reload the proxies from the file into the application's memory
+        load_proxies()
+
+        # Update the global variable for the enabled state and save it
+        PROXIES_ENABLED = proxies_enabled_state
+        save_settings()
+
+        return jsonify({"message": "Proxy settings saved successfully."})
     except Exception as e:
-        print(f"Error saving proxies.txt: {e}")
-        return jsonify({"error": "Failed to save proxy list on the server."}), 500
+        print(f"Error saving proxy settings: {e}")
+        return jsonify({"error": "Failed to save proxy settings on the server."}), 500
 
 
 def normalize_url_for_requests(url):
@@ -413,7 +530,7 @@ def analyze_headers_endpoint():
     
     try:
         full_url = normalize_url_for_requests(url)
-        response = requests.get(full_url, timeout=10, allow_redirects=True)
+        response = requests.get(full_url, timeout=10, allow_redirects=True, verify=False)
         for header in headers_to_check:
             if header in response.headers:
                 headers_to_check[header] = 'Present'
@@ -433,7 +550,7 @@ def detect_tech_endpoint():
     detected_tech = set()
     try:
         full_url = normalize_url_for_requests(url)
-        response = requests.get(full_url, timeout=10, allow_redirects=True)
+        response = requests.get(full_url, timeout=10, allow_redirects=True, verify=False)
         content = response.text
         headers = response.headers
         soup = BeautifulSoup(content, 'html.parser')
@@ -470,7 +587,8 @@ def check_links_endpoint():
     
     def check_url(url):
         try:
-            response = session.head(url, timeout=5, allow_redirects=True, headers={'User-Agent': 'SiteScanner/1.0'})
+            # Using verify=False to ignore SSL certificate errors, common in dev
+            response = session.head(url, timeout=5, allow_redirects=True, headers={'User-Agent': 'Ariadne Scanner/1.2'}, verify=False)
             return url, response.status_code
         except requests.RequestException:
             return url, "Error"
@@ -483,6 +601,7 @@ def check_links_endpoint():
 
 
 if __name__ == '__main__':
+    load_settings()
     load_proxies()
     app.run(port=5010, debug=True, threaded=True)
 
