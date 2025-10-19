@@ -24,6 +24,10 @@ import urllib3
 import difflib
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from datetime import datetime
+import atexit
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed for this specific app
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -32,11 +36,15 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
 
-# Global variables
+# --- Global variables & Configuration ---
 PROXY_LIST = []
 PROXY_CYCLE = None
 PROXIES_ENABLED = True
 SETTINGS_FILE = 'settings.json'
+SCHEDULES_FILE = 'schedules.json'
+
+# --- Scheduler Setup ---
+scheduler = BackgroundScheduler()
 
 def load_settings():
     """Loads settings from the settings file."""
@@ -78,7 +86,102 @@ def load_proxies():
         PROXY_LIST = []
         PROXY_CYCLE = None
 
+# --- Core Logic Functions (Internal, for scheduler use) ---
 
+def find_subdomains_internal(domain):
+    found_subdomains = set()
+    try:
+        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15, verify=False)
+        if response.ok:
+            for cert in response.json():
+                name_value = cert.get('name_value')
+                if name_value:
+                    subdomains = name_value.split('\n')
+                    for sub in subdomains:
+                        if sub.endswith(f".{domain}") and '*' not in sub and sub != domain:
+                            found_subdomains.add(sub)
+    except Exception as e:
+        print(f"Scheduled scan: Error querying crt.sh for {domain}: {e}")
+    return sorted(list(found_subdomains))
+
+def check_diff_internal(url):
+    try:
+        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&statuscode=200&limit=-1"
+        cdx_response = requests.get(cdx_url, timeout=20)
+        cdx_response.raise_for_status()
+        snapshots = cdx_response.json()
+
+        if len(snapshots) <= 1:
+            return True # Not archived before, so it's a "change"
+
+        latest_timestamp = snapshots[-1][0]
+        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{url}"
+        
+        archived_response = requests.get(archived_url, timeout=20)
+        archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
+        archived_text = archived_soup.get_text()
+
+        live_response = requests.get(url, timeout=20, verify=False)
+        live_soup = BeautifulSoup(live_response.text, 'html.parser')
+        live_text = live_soup.get_text()
+
+        return archived_text != live_text
+    except Exception as e:
+        print(f"Scheduled scan: Error diffing {url}: {e}")
+        return False # If diff fails, don't archive
+
+def archive_url_internal(url):
+    archive_api_url = f"https://web.archive.org/save/{url}"
+    headers = {'User-Agent': 'Ariadne Scheduler/1.4'}
+    
+    if not PROXIES_ENABLED or not PROXY_LIST:
+        try:
+            http_manager = urllib3.PoolManager(headers=headers, cert_reqs='CERT_NONE')
+            response = http_manager.request('GET', archive_api_url, timeout=30.0)
+            if response.status < 400:
+                print(f"Scheduled scan: Successfully archived {url} directly.")
+        except Exception as e:
+            print(f"Scheduled scan: Failed to archive {url} directly: {e}")
+        return
+
+    num_proxies = len(PROXY_LIST)
+    for _ in range(num_proxies):
+        proxy_line = next(PROXY_CYCLE).strip()
+        if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
+            proxy_line = 'http://' + proxy_line
+        try:
+            http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE')
+            response = http_manager.request('GET', archive_api_url, timeout=20.0)
+            if response.status < 400:
+                print(f"Scheduled scan: Successfully archived {url} using proxy {proxy_line}.")
+                return # Success
+        except Exception as e:
+            print(f"Scheduled scan: Proxy {proxy_line} failed for {url}: {e}")
+            continue
+    print(f"Scheduled scan: All proxies failed for {url}.")
+
+def run_scheduled_scan(domain):
+    """The main function that the scheduler will execute."""
+    print(f"--- Running scheduled scan for {domain} at {datetime.now()} ---")
+    subdomains = find_subdomains_internal(domain)
+    if not subdomains:
+        print(f"No subdomains found for {domain}. Scan complete.")
+        return
+
+    print(f"Found {len(subdomains)} subdomains. Checking each for changes...")
+    for subdomain in subdomains:
+        full_url = f"https://{subdomain}"
+        print(f"Checking: {full_url}")
+        if check_diff_internal(full_url):
+            print(f"Changes detected for {full_url}. Archiving...")
+            archive_url_internal(full_url)
+            time.sleep(5) # Rate limit ourselves
+        else:
+            print(f"No changes for {full_url}. Skipping.")
+    print(f"--- Scheduled scan for {domain} complete. ---")
+
+
+# --- Helper Functions ---
 def get_domain_name(url):
     try:
         parsed_url = urlparse(url)
@@ -128,9 +231,31 @@ def find_links_in_js(session, base_url, domain, follow_external):
         print(f"Could not fetch base URL for JS scan {base_url}: {e}")
     return js_links
 
-@app.route('/')
-def serve_frontend():
-    return app.send_static_file('index.html')
+def normalize_url_for_requests(url):
+    if not re.match(r'^[a-zA-Z]+://', url):
+        return 'https://' + url
+    return url
+
+# --- Scheduling Persistence ---
+
+def load_schedules():
+    try:
+        with open(SCHEDULES_FILE, 'r') as f:
+            schedules = json.load(f)
+            for job_info in schedules:
+                scheduler.add_job(
+                    run_scheduled_scan,
+                    args=[job_info['domain']],
+                    trigger=IntervalTrigger(weeks=job_info.get('weeks', 0), days=job_info.get('days', 0)),
+                    id=job_info['id'],
+                    name=job_info['domain'],
+                    next_run_time=datetime.fromisoformat(job_info['next_run_time'])
+                )
+            print(f"Loaded {len(schedules)} schedules.")
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("No schedules file found, starting fresh.")
+
+# --- Web Server Endpoints ---
 
 @app.route('/scan', methods=['GET'])
 def scan_site():
@@ -249,6 +374,7 @@ def scan_site():
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
+
 @app.route('/find-subdomains', methods=['POST'])
 def find_subdomains_endpoint():
     data = request.get_json()
@@ -323,7 +449,6 @@ def archive_url():
         def yield_event(data):
             return f"data: {json.dumps(data)}\n\n"
 
-        # If proxies are disabled or list is empty, connect directly.
         if not PROXIES_ENABLED or not PROXY_LIST:
             yield yield_event({"status": "No proxy enabled. Connecting directly..."})
             try:
@@ -340,23 +465,18 @@ def archive_url():
                 yield "event: end\n\n"
             return
 
-        # --- Resilient Proxy Rotation Logic ---
         num_proxies = len(PROXY_LIST)
         for i in range(num_proxies):
             proxy_line = next(PROXY_CYCLE).strip()
             if not proxy_line:
                 continue
-
             if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
                 proxy_line = 'http://' + proxy_line
-            
             yield yield_event({"status": f"Trying proxy ({i+1}/{num_proxies})..."})
             print(f"Attempting to use proxy: {proxy_line}")
-            
             try:
                 http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
                 response = http_manager.request('GET', archive_api_url, timeout=20.0)
-                
                 if response.status < 400:
                     print(f"Proxy {proxy_line} successful!")
                     yield yield_event({"success": "Successfully submitted to Internet Archive."})
@@ -366,7 +486,6 @@ def archive_url():
                     status_message = f"Proxy failed with status {response.status}. Trying next..."
                     print(status_message)
                     yield yield_event({"status": status_message})
-
             except urllib3.exceptions.ProxyError as e:
                 print(f"Proxy {proxy_line} failed: {e}. Trying next...")
                 yield yield_event({"status": "Proxy connection failed. Trying next..."})
@@ -375,14 +494,12 @@ def archive_url():
                 print(f"Proxy {proxy_line} encountered a general error: {e}. Trying next...")
                 yield yield_event({"status": "Proxy timeout. Trying next..."})
                 continue
-                
-        # If the loop completes, all proxies have failed.
         final_error_message = "All available proxies failed to connect."
         print(final_error_message)
         yield yield_event({"error": final_error_message})
         yield "event: end\n\n"
-
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
 
 @app.route('/check-diff', methods=['POST'])
 def check_diff():
@@ -390,58 +507,129 @@ def check_diff():
     url = data.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
-
     try:
-        # 1. Check for the latest snapshot from the Internet Archive CDX API
         cdx_url = f"http://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&statuscode=200&limit=-1"
         cdx_response = requests.get(cdx_url)
         cdx_response.raise_for_status()
         snapshots = cdx_response.json()
-
-        if len(snapshots) <= 1: # The first entry is the header
+        if len(snapshots) <= 1:
             return jsonify({"has_changes": False, "message": "Not previously archived or no successful captures found."})
-
         latest_timestamp = snapshots[-1][0]
         archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{url}"
-        
-        # 2. Fetch content of the archived version
         archived_response = requests.get(archived_url, timeout=20)
         archived_response.raise_for_status()
         archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
         archived_text = archived_soup.get_text()
-
-        # 3. Fetch content of the live version
         live_response = requests.get(url, timeout=20, verify=False)
         live_response.raise_for_status()
         live_soup = BeautifulSoup(live_response.text, 'html.parser')
         live_text = live_soup.get_text()
-
-        # 4. Compare the two versions
         diff = difflib.HtmlDiff(wrapcolumn=80).make_table(
             archived_text.splitlines(),
             live_text.splitlines(),
             fromdesc=f"Archived on {latest_timestamp}",
             todesc="Live Version"
         )
-        
         if archived_text == live_text:
              return jsonify({"has_changes": False, "message": "No significant changes detected since the last archive."})
         else:
              return jsonify({"has_changes": True, "diff_html": diff})
-
     except requests.RequestException as e:
         return jsonify({"error": f"Network error during diff check: {e}"}), 500
     except Exception as e:
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
+@app.route('/get-schedules', methods=['GET'])
+def get_schedules():
+    """Returns a list of all currently scheduled jobs."""
+    jobs = []
+    for job in scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "domain": job.name,
+            "next_run": job.next_run_time.isoformat() if job.next_run_time else 'Paused',
+            "interval": str(job.trigger)
+        })
+    return jsonify(jobs)
+
+@app.route('/schedule-scan', methods=['POST'])
+def schedule_scan():
+    """Schedules a new recurring scan."""
+    data = request.get_json()
+    domain = data.get('domain')
+    start_date_str = data.get('start_date')
+    frequency = data.get('frequency')
+    
+    if not all([domain, start_date_str, frequency]):
+        return jsonify({"error": "Domain, start date, and frequency are required."}), 400
+
+    try:
+        start_date = datetime.fromisoformat(start_date_str)
+        trigger_args = {}
+        if frequency == 'weekly': trigger_args['weeks'] = 1
+        elif frequency == 'bi-weekly': trigger_args['weeks'] = 2
+        elif frequency == 'monthly': trigger_args['weeks'] = 4 # Approx
+        elif frequency == 'every-other-month': trigger_args['weeks'] = 8 # Approx
+
+        job = scheduler.add_job(
+            run_scheduled_scan,
+            args=[domain],
+            trigger=IntervalTrigger(**trigger_args),
+            name=domain,
+            next_run_time=start_date
+        )
+        
+        # Save schedule to file for persistence
+        schedules = []
+        try:
+            with open(SCHEDULES_FILE, 'r') as f:
+                schedules = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        
+        schedules.append({
+            "id": job.id, "domain": domain, "next_run_time": job.next_run_time.isoformat(),
+            "weeks": trigger_args.get('weeks'), "days": trigger_args.get('days')
+        })
+        with open(SCHEDULES_FILE, 'w') as f:
+            json.dump(schedules, f, indent=4)
+
+        return jsonify({"message": "Scan scheduled successfully!", "job_id": job.id})
+    except Exception as e:
+        return jsonify({"error": f"Failed to schedule scan: {e}"}), 500
+
+@app.route('/delete-schedule', methods=['POST'])
+def delete_schedule():
+    """Deletes a scheduled job."""
+    data = request.get_json()
+    job_id = data.get('id')
+    if not job_id:
+        return jsonify({"error": "Job ID is required."}), 400
+
+    try:
+        scheduler.remove_job(job_id)
+        # Update the schedules file
+        schedules = []
+        try:
+            with open(SCHEDULES_FILE, 'r') as f:
+                schedules = json.load(f)
+            schedules = [s for s in schedules if s['id'] != job_id]
+            with open(SCHEDULES_FILE, 'w') as f:
+                json.dump(schedules, f, indent=4)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass # File might already be empty or gone
+        return jsonify({"message": "Schedule deleted successfully."})
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete schedule: {e}"}), 500
+
+# --- Other Endpoints (get_ip, get_registrar, etc.) ---
 @app.route('/get-ip', methods=['POST'])
 def get_ip_address():
     data = request.get_json()
     domain = data.get('domain')
     if not domain:
         return jsonify({"error": "Domain is required"}), 400
-    
     try:
         answers = dns.resolver.resolve(domain, 'A')
         ip_address = answers[0].to_text()
@@ -451,14 +639,12 @@ def get_ip_address():
     except Exception as e:
         print(f"Error resolving IP for {domain}: {e}")
         return jsonify({"error": "An error occurred during IP lookup."}), 500
-
 @app.route('/get-registrar', methods=['POST'])
 def get_registrar():
     data = request.get_json()
     domain = data.get('domain')
     if not domain:
         return jsonify({"error": "Domain is required"}), 400
-    
     try:
         domain_info = whois.whois(domain)
         registrar = domain_info.registrar
@@ -468,85 +654,57 @@ def get_registrar():
     except Exception as e:
         print(f"Error during WHOIS lookup for {domain}: {e}")
         return jsonify({"registrar": "Error or not found"})
-
 @app.route('/get-proxy-settings', methods=['GET'])
 def get_proxy_settings():
-    """Gets the proxy list and whether proxies are enabled."""
     try:
         with open('proxies.txt', 'r') as f:
             proxies_content = f.read()
     except FileNotFoundError:
         proxies_content = "# Add proxy addresses here, one per line (e.g., http://user:pass@host:port).\n"
-    
     return jsonify({"proxies": proxies_content, "enabled": PROXIES_ENABLED})
-
-
 @app.route('/update-proxy-settings', methods=['POST'])
 def update_proxy_settings():
-    """Updates the proxy list and the enabled/disabled state."""
     global PROXIES_ENABLED
     data = request.get_json()
     proxies_content = data.get('proxies', '')
     proxies_enabled_state = data.get('enabled', True)
-    
     try:
-        # Save the proxy list to its file
         with open('proxies.txt', 'w') as f:
             f.write(proxies_content)
-        
-        # Reload the proxies from the file into the application's memory
         load_proxies()
-
-        # Update the global variable for the enabled state and save it
         PROXIES_ENABLED = proxies_enabled_state
         save_settings()
-
         return jsonify({"message": "Proxy settings saved successfully."})
     except Exception as e:
         print(f"Error saving proxy settings: {e}")
         return jsonify({"error": "Failed to save proxy settings on the server."}), 500
-
-
-def normalize_url_for_requests(url):
-    if not re.match(r'^[a-zA-Z]+://', url):
-        return 'https://' + url
-    return url
-
 @app.route('/analyze-headers', methods=['POST'])
 def analyze_headers_endpoint():
     data = request.get_json()
     url = data.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
-
     headers_to_check = {
-        'Content-Security-Policy': 'Missing',
-        'Strict-Transport-Security': 'Missing',
-        'X-Content-Type-Options': 'Missing',
-        'X-Frame-Options': 'Missing',
-        'Referrer-Policy': 'Missing',
-        'Permissions-Policy': 'Missing'
+        'Content-Security-Policy': 'Missing', 'Strict-Transport-Security': 'Missing',
+        'X-Content-Type-Options': 'Missing', 'X-Frame-Options': 'Missing',
+        'Referrer-Policy': 'Missing', 'Permissions-Policy': 'Missing'
     }
-    
     try:
         full_url = normalize_url_for_requests(url)
         response = requests.get(full_url, timeout=10, allow_redirects=True, verify=False)
         for header in headers_to_check:
             if header in response.headers:
                 headers_to_check[header] = 'Present'
-        
         return jsonify({"headers": headers_to_check})
     except requests.RequestException as e:
         print(f"Error fetching headers for {url}: {e}")
         return jsonify({"error": f"Could not fetch headers from the URL."}), 500
-
 @app.route('/detect-tech', methods=['POST'])
 def detect_tech_endpoint():
     data = request.get_json()
     url = data.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
-
     detected_tech = set()
     try:
         full_url = normalize_url_for_requests(url)
@@ -554,54 +712,43 @@ def detect_tech_endpoint():
         content = response.text
         headers = response.headers
         soup = BeautifulSoup(content, 'html.parser')
-
-        if 'wp-content' in content or 'wp-includes' in content:
-            detected_tech.add('WordPress')
-        if soup.select_one('#react-root') or 'react.js' in content or 'react.min.js' in content:
-            detected_tech.add('React')
-        if soup.select_one('[ng-version]'):
-            detected_tech.add('Angular')
-        if soup.select_one('#app') and ('vue.js' in content or 'vue.min.js' in content):
-             detected_tech.add('Vue.js')
-        if 'jquery' in content:
-            detected_tech.add('jQuery')
-        if 'bootstrap' in content:
-            detected_tech.add('Bootstrap')
-        if 'X-Powered-By' in headers and 'ASP.NET' in headers['X-Powered-By']:
-            detected_tech.add('ASP.NET')
-
+        if 'wp-content' in content or 'wp-includes' in content: detected_tech.add('WordPress')
+        if soup.select_one('#react-root') or 'react.js' in content or 'react.min.js' in content: detected_tech.add('React')
+        if soup.select_one('[ng-version]'): detected_tech.add('Angular')
+        if soup.select_one('#app') and ('vue.js' in content or 'vue.min.js' in content): detected_tech.add('Vue.js')
+        if 'jquery' in content: detected_tech.add('jQuery')
+        if 'bootstrap' in content: detected_tech.add('Bootstrap')
+        if 'X-Powered-By' in headers and 'ASP.NET' in headers['X-Powered-By']: detected_tech.add('ASP.NET')
         return jsonify({"technologies": list(detected_tech)})
     except requests.RequestException as e:
         print(f"Error fetching page for tech detection {url}: {e}")
         return jsonify({"error": f"Could not fetch page content."}), 500
-
 @app.route('/check-links', methods=['POST'])
 def check_links_endpoint():
     data = request.get_json()
     urls = data.get('urls')
     if not urls or not isinstance(urls, list):
         return jsonify({"error": "A list of URLs is required"}), 400
-
     results = {}
     session = requests.Session()
-    
     def check_url(url):
         try:
-            # Using verify=False to ignore SSL certificate errors, common in dev
             response = session.head(url, timeout=5, allow_redirects=True, headers={'User-Agent': 'Ariadne Scanner/1.2'}, verify=False)
             return url, response.status_code
         except requests.RequestException:
             return url, "Error"
-    
     for url in urls:
         _, status = check_url(url)
         results[url] = status
-    
     return jsonify({"link_statuses": results})
 
 
 if __name__ == '__main__':
     load_settings()
     load_proxies()
-    app.run(port=5010, debug=True, threaded=True)
+    scheduler.start()
+    load_schedules()
+    # Ensure the scheduler shuts down cleanly when the app exits
+    atexit.register(lambda: scheduler.shutdown())
+    app.run(port=5010, debug=False, threaded=True) # Debug mode should be off for scheduler
 

@@ -93,7 +93,12 @@
                 <h1 class="text-3xl font-bold text-gray-100">Ariadne</h1>
                 <p class="text-gray-400 mt-1">A comprehensive tool for site and subdomain discovery.</p>
             </div>
-            <div class="flex items-center space-x-2 w-28 justify-end">
+            <div class="flex items-center space-x-2 w-auto justify-end">
+                <button id="scheduler-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Scheduler">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </button>
                 <button id="about-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="About this Tool">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </button>
@@ -138,7 +143,7 @@
                 <div class="flex gap-2 flex-wrap">
                     <button id="sitemap-btn" class="hidden bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition">View Map</button>
                     <button id="export-csv-btn" class="hidden bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">Export Selected</button>
-                    <button id="archive-all-btn" class="hidden bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition">Archive Selected</button>
+                    <button id="archive-all-btn" class="hidden bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition">Archive</button>
                 </div>
             </div>
             <p class="text-gray-400 mb-4" id="results-summary"></p>
@@ -214,10 +219,43 @@
             <div id="about-modal-body" class="p-6 max-h-[70vh] overflow-y-auto space-y-4">
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Main Scanning Features</h4>
-                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website...</p>
-                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain...</p>
+                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. It uses a three-stage process: first, it looks for a <code>sitemap.xml</code> file. If not found, it launches an automated browser to crawl the site by following hyperlinks, simulating user scrolling to find dynamically loaded content. Finally, it analyzes the site's JavaScript files to discover hidden paths.</p>
+                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain using several advanced techniques, including checking Certificate Transparency logs, performing various DNS lookups (MX, NS), and using Reverse DNS lookups.</p>
                 </div>
-                <!-- Other sections omitted for brevity -->
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Scan Options</h4>
+                    <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to. Higher depths can significantly increase scan time.</p>
+                    <p class="text-sm mt-1"><strong>Follow External Links:</strong> When checked, this allows the 'Scan Site' crawler to follow hyperlinks to different websites, up to the specified depth.</p>
+                </div>
+                 <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
+                    <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select specific items using the checkboxes.</p>
+                    <p class="text-sm mt-1"><strong>Export/Archive Selected:</strong> Allows you to save the selected items to a CSV file or submit them to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a> for preservation.</p>
+                     <p class="text-sm mt-1"><strong>Individual Actions (Diff, Tech, Headers, Scan):</strong> Buttons next to each result allow you to perform actions on that specific item, such as initiating a new scan on a subdomain, running a detailed analysis, or checking for changes.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Change Detection</h4>
+                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This powerful feature compares the live version of a page against its most recent snapshot on the Internet Archive. It queries the archive for the latest successful capture, fetches both versions, and displays a side-by-side comparison highlighting any text that has been added or removed. If changes are found, you have the option to archive the new version directly.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Visual Maps</h4>
+                    <p class="text-sm mt-1"><strong>View Map:</strong> After a scan, this button generates an interactive visual sitemap or subdomain map. Nodes on the map are clickable and will open the corresponding URL in a new tab.</p>
+                    <p class="text-sm mt-1"><strong>Map Legend:</strong> Provides key information about the scanned host, including its IP address, domain provider, the number of items found, and the total scan time.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Analysis Tools</h4>
+                    <p class="text-sm mt-1"><strong>Detect Tech:</strong> Analyzes a URL to identify the web technologies it is built with (e.g., WordPress, React).</p>
+                    <p class="text-sm mt-1"><strong>Analyze Headers:</strong> Inspects a URL's HTTP response to check for important security headers.</p>
+                    <p class="text-sm mt-1"><strong>Check All For Broken Links:</strong> Tests every link found during a site scan to see if it leads to a "404 Not Found" error.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Automated Scanning</h4>
+                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> This feature transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically perform a subdomain search, run a diff check on each result, and archive any subdomains that have changed. Schedules can be set to run weekly, bi-weekly, monthly, or every other month, and can be managed from the Scheduler modal.</p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Configuration</h4>
+                    <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Allows you to provide a list of proxy servers. When archiving pages, the tool will rotate through this list to find a working proxy. You can also enable or disable the use of proxies entirely with a toggle switch.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -237,6 +275,39 @@
         </div>
     </div>
 
+    <div id="scheduler-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold">Scan Scheduler</h3>
+                <button id="close-scheduler-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div class="p-6">
+                <div class="mb-6 border-b border-gray-700 pb-6">
+                    <h4 class="text-lg font-semibold mb-3">Add New Schedule</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="text" id="schedule-domain-input" placeholder="Enter domain (e.g., example.com)" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                        <input type="datetime-local" id="schedule-start-date" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                        <select id="schedule-frequency" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                            <option value="weekly">Weekly</option>
+                            <option value="bi-weekly">Bi-Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="every-other-month">Every Other Month</option>
+                        </select>
+                        <button id="save-schedule-btn" class="bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Save Schedule</button>
+                    </div>
+                    <p id="schedule-status-message" class="text-sm mt-3"></p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-3">Current Schedules</h4>
+                    <div id="scheduled-jobs-list" class="space-y-3 max-h-60 overflow-y-auto">
+                        <!-- Scheduled jobs will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         const API_BASE_URL = 'http://127.0.0.1:5010';
@@ -246,7 +317,6 @@
         let currentScanType = '';
 
         // DOM Elements
-        // ... (all existing element declarations)
         const urlInput = document.getElementById('url-input');
         const depthInput = document.getElementById('depth-input');
         const followExternalCheckbox = document.getElementById('follow-external-checkbox');
@@ -269,7 +339,6 @@
         const selectAllCheckbox = document.getElementById('select-all-checkbox');
 
         // Modals
-        // ... (all existing modal declarations)
         const sitemapModal = document.getElementById('sitemap-modal');
         const closeSitemapModalBtn = document.getElementById('close-sitemap-modal-btn');
         const analysisModal = document.getElementById('analysis-modal');
@@ -277,6 +346,7 @@
         const proxyModal = document.getElementById('proxy-modal');
         const closeProxyModalBtn = document.getElementById('close-proxy-modal-btn');
         const aboutModal = document.getElementById('about-modal');
+        const aboutBtn = document.getElementById('about-btn');
         const closeAboutModalBtn = document.getElementById('close-about-modal-btn');
         const diffModal = document.getElementById('diff-modal');
         const closeDiffModalBtn = document.getElementById('close-diff-modal-btn');
@@ -288,6 +358,15 @@
         const enableProxiesCheckbox = document.getElementById('enable-proxies-checkbox');
         const proxyStatusMessage = document.getElementById('proxy-status-message');
         const saveProxyBtn = document.getElementById('save-proxy-btn');
+        const schedulerModal = document.getElementById('scheduler-modal');
+        const schedulerBtn = document.getElementById('scheduler-btn');
+        const closeSchedulerModalBtn = document.getElementById('close-scheduler-modal-btn');
+        const scheduleDomainInput = document.getElementById('schedule-domain-input');
+        const scheduleStartDate = document.getElementById('schedule-start-date');
+        const scheduleFrequency = document.getElementById('schedule-frequency');
+        const saveScheduleBtn = document.getElementById('save-schedule-btn');
+        const scheduleStatusMessage = document.getElementById('schedule-status-message');
+        const scheduledJobsList = document.getElementById('scheduled-jobs-list');
         
 
         function addResultItem(item, index) {
@@ -308,7 +387,13 @@
             } else if (currentScanType === 'subdomain') {
                  displayName = `${item.name} <span class="text-xs text-gray-400 ml-2">(${item.type})</span>`;
                  linkUrl = item.name;
-                 actionsHtml += `<button onclick="scanSubdomain('${linkUrl}')" class="ml-4 bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition">Scan</button>`;
+                 const fullSubdomainUrl = `https://${linkUrl}`;
+                 actionsHtml += `
+                    <button onclick="runDiffCheck('${fullSubdomainUrl}', ${index})" class="ml-2 bg-teal-600 text-white px-2 py-1 text-xs rounded hover:bg-teal-700 transition" title="Check for Changes">Diff</button>
+                    <button onclick="runSingleTechAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
+                    <button onclick="runSingleHeaderAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
+                    <button onclick="scanSubdomain('${linkUrl}')" class="ml-2 bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition">Scan</button>
+                 `;
             } else {
                  displayName = (typeof item === 'string') ? item : item.name;
                  linkUrl = displayName;
@@ -318,7 +403,7 @@
 
             div.innerHTML = `
                 <div class="flex items-center truncate mr-4">
-                    <input type="checkbox" class="result-checkbox h-4 w-4 rounded border-G-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500 mr-4" data-link='${linkUrl}'>
+                    <input type="checkbox" class="result-checkbox h-4 w-4 rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500 mr-4" data-link='${linkUrl}'>
                     <a href="${fullUrl}" target="_blank" class="text-blue-500 hover:underline">${displayName}</a>
                 </div>
                 <div class="flex items-center flex-shrink-0">
@@ -372,14 +457,54 @@
                 statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
             }
         }
-
-        // --- Existing Functions (setUILoading, showActionButtons, etc.) ---
-        // Make sure to copy ALL other existing JavaScript functions here,
-        // as they are omitted for brevity in this example.
-        // The following is a placeholder for where they should go.
         
-        // [ ... PASTE ALL OTHER JAVASCRIPT FUNCTIONS HERE ... ]
-        // (From setUILoading all the way down to the last event listener)
+        // --- Scheduler Functions ---
+        async function loadSchedules() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-schedules`);
+                const jobs = await response.json();
+                scheduledJobsList.innerHTML = '';
+                if (jobs.length === 0) {
+                    scheduledJobsList.innerHTML = '<p class="text-gray-400">No scans are currently scheduled.</p>';
+                    return;
+                }
+                jobs.forEach(job => {
+                    const nextRun = new Date(job.next_run).toLocaleString();
+                    const div = document.createElement('div');
+                    div.className = 'bg-gray-700 p-3 rounded-md flex justify-between items-center';
+                    div.innerHTML = `
+                        <div>
+                            <p class="font-semibold">${job.domain}</p>
+                            <p class="text-xs text-gray-400">Next run: ${nextRun}</p>
+                        </div>
+                        <button onclick="deleteSchedule('${job.id}')" class="bg-red-600 text-white px-3 py-1 text-xs rounded hover:bg-red-700 transition">Delete</button>
+                    `;
+                    scheduledJobsList.appendChild(div);
+                });
+            } catch (e) {
+                scheduledJobsList.innerHTML = '<p class="text-red-500">Could not load schedules.</p>';
+            }
+        }
+
+        async function deleteSchedule(id) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    loadSchedules();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (e) {
+                alert('Failed to delete schedule.');
+            }
+        }
+        
+        // --- All other existing JS functions ---
 
         function setUILoading(isLoading) {
             loadingSpinner.classList.toggle('hidden', !isLoading);
@@ -393,23 +518,34 @@
             }
         }
 
-        function showActionButtons(hasResults) {
-            exportCsvBtn.classList.toggle('hidden', !hasResults);
-            archiveAllBtn.classList.toggle('hidden', !hasResults);
-            sitemapBtn.classList.toggle('hidden', !hasResults);
-            analysisContainer.classList.toggle('hidden', !hasResults);
-            selectAllContainer.classList.toggle('hidden', !hasResults);
+        function showActionButtons(show) {
+            const hasResults = currentResults.length > 0;
+            exportCsvBtn.classList.toggle('hidden', !show);
+            archiveAllBtn.classList.toggle('hidden', !show);
+            sitemapBtn.classList.toggle('hidden', !show);
+            analysisContainer.classList.toggle('hidden', !show);
+            selectAllContainer.classList.toggle('hidden', !hasResults); // Only show select all if there are results
             updateActionButtonsState();
         }
 
         function updateActionButtonsState() {
             const selectedCount = document.querySelectorAll('.result-checkbox:checked').length;
-            const disabled = selectedCount === 0;
-            
-            exportCsvBtn.disabled = disabled;
-            archiveAllBtn.disabled = disabled;
-            exportCsvBtn.classList.toggle('opacity-50', disabled);
-            archiveAllBtn.classList.toggle('opacity-50', disabled);
+            const hasResults = currentResults.length > 0;
+
+            exportCsvBtn.disabled = selectedCount === 0;
+            exportCsvBtn.classList.toggle('opacity-50', selectedCount === 0);
+
+            const archiveDisabled = hasResults && selectedCount === 0;
+            archiveAllBtn.disabled = archiveDisabled;
+            archiveAllBtn.classList.toggle('opacity-50', archiveDisabled);
+
+            if (selectedCount > 0) {
+                archiveAllBtn.textContent = `Archive ${selectedCount} Selected`;
+            } else if (!hasResults) {
+                archiveAllBtn.textContent = 'Archive Base URL';
+            } else {
+                archiveAllBtn.textContent = 'Archive';
+            }
         }
 
         function displayStaticResults(title, items, summaryPrefix) {
@@ -419,7 +555,7 @@
             resultsSummary.textContent = `${summaryPrefix} ${items.length} unique items.`;
             currentResults = items;
 
-            showActionButtons(items.length > 0);
+            showActionButtons(true);
 
             if (items.length === 0) {
                 resultsList.innerHTML = '<p>No items found.</p>';
@@ -521,7 +657,7 @@
                 const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
 
                 scanSummaryData = { hostname, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
-                showActionButtons(currentResults.length > 0);
+                showActionButtons(true);
             });
 
             eventSource.onerror = function(err) {
@@ -564,12 +700,23 @@
         
         function archiveUrl(link, index) {
             return new Promise((resolve) => {
-                const statusSpan = document.getElementById(`status-${index}`);
-                if (!statusSpan) { resolve(); return; }
+                let statusSpan = null;
+                if (index !== -1) {
+                    statusSpan = document.getElementById(`status-${index}`);
+                }
 
-                statusSpan.textContent = 'Connecting...';
-                statusSpan.className = 'text-sm font-medium text-gray-400 flex-shrink-0';
-                statusSpan.title = '';
+                const updateStatus = (text, colorClass, title = '') => {
+                    if (statusSpan) {
+                        statusSpan.textContent = text;
+                        statusSpan.className = `text-sm font-medium ${colorClass} flex-shrink-0`;
+                        statusSpan.title = title;
+                    } else {
+                        resultsSummary.textContent = text;
+                        resultsSummary.className = `text-sm mb-4 ${colorClass}`;
+                    }
+                };
+
+                updateStatus('Connecting...', 'text-gray-400');
 
                 const fullUrl = link.startsWith('http') ? link : `https://${link}`;
                 const eventSource = new EventSource(`${API_BASE_URL}/archive-url?url=${encodeURIComponent(fullUrl)}`);
@@ -577,28 +724,22 @@
                 eventSource.onmessage = function(event) {
                     const data = JSON.parse(event.data);
                     if (data.status) {
-                        statusSpan.textContent = data.status;
-                        statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
+                        updateStatus(data.status, 'text-yellow-500');
                     }
                     if (data.success) {
-                        statusSpan.textContent = 'Saved!';
-                        statusSpan.className = 'text-sm font-medium text-green-500 flex-shrink-0';
+                        updateStatus('Saved!', 'text-green-500');
                         eventSource.close();
                         resolve();
                     }
                     if (data.error) {
-                        statusSpan.textContent = 'Failed!';
-                        statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
-                        statusSpan.title = data.error;
+                        updateStatus('Failed!', 'text-red-500', data.error);
                         eventSource.close();
                         resolve();
                     }
                 };
                 eventSource.addEventListener('end', () => resolve());
                 eventSource.onerror = () => {
-                    statusSpan.textContent = 'Failed!';
-                    statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
-                    statusSpan.title = 'Connection error to the backend server.';
+                    updateStatus('Failed!', 'text-red-500', 'Connection error to the backend server.');
                     eventSource.close();
                     resolve();
                 };
@@ -607,20 +748,23 @@
 
         async function archiveSelectedResults() {
             const selectedCheckboxes = Array.from(document.querySelectorAll('.result-checkbox:checked'));
-            if (selectedCheckboxes.length === 0) {
-                archiveAllBtn.textContent = 'Select items first!';
-                setTimeout(() => { archiveAllBtn.textContent = 'Archive Selected'; }, 2000);
+            let itemsToArchive = [];
+
+            if (selectedCheckboxes.length > 0) {
+                itemsToArchive = selectedCheckboxes.map(cb => {
+                    const link = cb.dataset.link;
+                    const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
+                    const originalIndex = currentResults.indexOf(originalItem);
+                    return { link, index: originalIndex };
+                });
+            } else if (currentResults.length === 0 && urlInput.value) {
+                itemsToArchive.push({ link: urlInput.value, index: -1 });
+            } else {
                 return;
             }
 
+            const initialButtonText = archiveAllBtn.textContent;
             archiveAllBtn.disabled = true;
-
-            const itemsToArchive = selectedCheckboxes.map(cb => {
-                const link = cb.dataset.link;
-                const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
-                const originalIndex = currentResults.indexOf(originalItem);
-                return { link, index: originalIndex };
-            });
 
             for (let i = 0; i < itemsToArchive.length; i++) {
                 const item = itemsToArchive[i];
@@ -629,9 +773,10 @@
                 if (i < itemsToArchive.length - 1) await new Promise(resolve => setTimeout(resolve, 500));
             }
             
-            archiveAllBtn.textContent = `Archive Selected`;
+            archiveAllBtn.textContent = initialButtonText;
             updateActionButtonsState();
         }
+
 
         function generateSitemap(items) {
             const svg = d3.select("#sitemap-svg");
@@ -831,6 +976,43 @@
 
         aboutBtn.addEventListener('click', () => aboutModal.classList.remove('hidden'));
         closeAboutModalBtn.addEventListener('click', () => aboutModal.classList.add('hidden'));
+
+        schedulerBtn.addEventListener('click', () => {
+            schedulerModal.classList.remove('hidden');
+            loadSchedules();
+        });
+        closeSchedulerModalBtn.addEventListener('click', () => schedulerModal.classList.add('hidden'));
+
+        saveScheduleBtn.addEventListener('click', async () => {
+            const domain = scheduleDomainInput.value;
+            const startDate = scheduleStartDate.value;
+            const frequency = scheduleFrequency.value;
+
+            if (!domain || !startDate) {
+                scheduleStatusMessage.textContent = 'Please provide a domain and a start date.';
+                scheduleStatusMessage.className = 'text-sm mt-3 text-red-500';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/schedule-scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain, start_date: startDate, frequency }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    scheduleStatusMessage.textContent = data.message;
+                    scheduleStatusMessage.className = 'text-sm mt-3 text-green-500';
+                    loadSchedules(); // Refresh the list
+                } else {
+                    throw new Error(data.error || 'Failed to save schedule');
+                }
+            } catch (e) {
+                scheduleStatusMessage.textContent = e.message;
+                scheduleStatusMessage.className = 'text-sm mt-3 text-red-500';
+            }
+        });
 
         techBtn.addEventListener('click', () => runAnalysis('/detect-tech', 'Technology Stack', { url: urlInput.value }));
         headersBtn.addEventListener('click', () => runAnalysis('/analyze-headers', 'Security Headers', { url: urlInput.value }));
