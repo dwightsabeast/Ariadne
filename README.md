@@ -19,18 +19,9 @@
 
 ## Features
 
-Main level URL scans
-Subdomain discovery
-Site scan depth 
-Ability to follow external links outside of the main level URL
-Ability to export links/sites/subdomains found during a scan to a .csv file
-Ability to archive links/sites/subdomains found during a scan to the Internet Archive
-Diff funtionality on all scans 
-On-the-fly sitemap generation
-Scans for security headers
-404 broken link checks
-Archive scheduling 
-The ability to add proxies
+This tool provides comprehensive website scanning capabilities, starting from a main-level URL. It features robust subdomain discovery and allows you to configure the scan depth, including the option to follow external links beyond the initial domain. During a scan, the tool performs 404 broken link checks, scans for key security headers, and can generate a sitemap on-the-fly.
+
+Key features include the ability to export all discovered links, sites, and subdomains to a .csv file for external analysis. You can also archive found links directly to the Internet Archive, with support for scheduling regular archives. Additionally, the tool offers a "diff" functionality to compare scan results over time, helping you track changes. For advanced use, it also supports the ability to add and use proxies for scanning.
 
 ## Installation
 
