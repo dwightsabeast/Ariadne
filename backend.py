@@ -106,7 +106,8 @@ def find_subdomains_internal(domain):
 
 def check_diff_internal(url):
     try:
-        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&statuscode=200&limit=-1"
+        full_url = normalize_url_for_requests(url)
+        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={full_url}&output=json&fl=timestamp&statuscode=200&limit=-1"
         cdx_response = requests.get(cdx_url, timeout=20)
         cdx_response.raise_for_status()
         snapshots = cdx_response.json()
@@ -115,13 +116,13 @@ def check_diff_internal(url):
             return True # Not archived before, so it's a "change"
 
         latest_timestamp = snapshots[-1][0]
-        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{url}"
+        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{full_url}"
         
         archived_response = requests.get(archived_url, timeout=20)
         archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
         archived_text = archived_soup.get_text()
 
-        live_response = requests.get(url, timeout=20, verify=False)
+        live_response = requests.get(full_url, timeout=20, verify=False)
         live_soup = BeautifulSoup(live_response.text, 'html.parser')
         live_text = live_soup.get_text()
 
@@ -246,7 +247,10 @@ def load_schedules():
                 scheduler.add_job(
                     run_scheduled_scan,
                     args=[job_info['domain']],
-                    trigger=IntervalTrigger(weeks=job_info.get('weeks', 0), days=job_info.get('days', 0)),
+                    trigger=IntervalTrigger(
+                        weeks=job_info.get('weeks') or 0, 
+                        days=job_info.get('days') or 0
+                    ),
                     id=job_info['id'],
                     name=job_info['domain'],
                     next_run_time=datetime.fromisoformat(job_info['next_run_time'])
@@ -508,30 +512,42 @@ def check_diff():
     if not url:
         return jsonify({"error": "URL is required"}), 400
     try:
-        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&statuscode=200&limit=-1"
+        full_url = normalize_url_for_requests(url)
+        cdx_url = f"http://web.archive.org/cdx/search/cdx?url={full_url}&output=json&fl=timestamp&statuscode=200&limit=-1"
         cdx_response = requests.get(cdx_url)
         cdx_response.raise_for_status()
         snapshots = cdx_response.json()
         if len(snapshots) <= 1:
             return jsonify({"has_changes": False, "message": "Not previously archived or no successful captures found."})
+        
         latest_timestamp = snapshots[-1][0]
-        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{url}"
+        try:
+            # Format the timestamp for better readability
+            date_obj = datetime.strptime(latest_timestamp, '%Y%m%d%H%M%S')
+            formatted_date = date_obj.strftime('%B %d, %Y at %I:%M %p')
+        except ValueError:
+            formatted_date = latest_timestamp # Fallback to raw timestamp
+
+        archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{full_url}"
         archived_response = requests.get(archived_url, timeout=20)
         archived_response.raise_for_status()
         archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
         archived_text = archived_soup.get_text()
-        live_response = requests.get(url, timeout=20, verify=False)
+        
+        live_response = requests.get(full_url, timeout=20, verify=False)
         live_response.raise_for_status()
         live_soup = BeautifulSoup(live_response.text, 'html.parser')
         live_text = live_soup.get_text()
+        
         diff = difflib.HtmlDiff(wrapcolumn=80).make_table(
             archived_text.splitlines(),
             live_text.splitlines(),
-            fromdesc=f"Archived on {latest_timestamp}",
+            fromdesc=f"Archived on {formatted_date}",
             todesc="Live Version"
         )
+
         if archived_text == live_text:
-             return jsonify({"has_changes": False, "message": "No significant changes detected since the last archive."})
+             return jsonify({"has_changes": False, "message": f"No significant changes detected since the last archive on {formatted_date}."})
         else:
              return jsonify({"has_changes": True, "diff_html": diff})
     except requests.RequestException as e:
@@ -567,7 +583,8 @@ def schedule_scan():
     try:
         start_date = datetime.fromisoformat(start_date_str)
         trigger_args = {}
-        if frequency == 'weekly': trigger_args['weeks'] = 1
+        if frequency == 'daily': trigger_args['days'] = 1
+        elif frequency == 'weekly': trigger_args['weeks'] = 1
         elif frequency == 'bi-weekly': trigger_args['weeks'] = 2
         elif frequency == 'monthly': trigger_args['weeks'] = 4 # Approx
         elif frequency == 'every-other-month': trigger_args['weeks'] = 8 # Approx

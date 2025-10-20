@@ -153,7 +153,8 @@
         <!-- Analysis Section -->
         <div id="analysis-container" class="bg-gray-800 mt-6 p-6 rounded-lg shadow-lg border border-gray-700 hidden">
              <h2 class="text-2xl font-bold text-gray-100 mb-4">Analysis Tools</h2>
-             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                 <button id="diff-main-btn" class="w-full bg-teal-600 text-white py-2 rounded-md hover:bg-teal-700 transition">Diff (Main URL)</button>
                  <button id="tech-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Detect Tech (Main URL)</button>
                  <button id="headers-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Analyze Headers (Main URL)</button>
                  <button id="links-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Check All For Broken Links</button>
@@ -230,12 +231,12 @@
                  <div>
                     <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
                     <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select specific items using the checkboxes.</p>
-                    <p class="text-sm mt-1"><strong>Export/Archive Selected:</strong> Allows you to save the selected items to a CSV file or submit them to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a> for preservation.</p>
+                    <p class="text-sm mt-1"><strong>Export/Archive Selected:</strong> Allows you to save the selected items to a CSV file or submit them to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a> for preservation. If no results are found during a scan, you can still archive the base URL.</p>
                      <p class="text-sm mt-1"><strong>Individual Actions (Diff, Tech, Headers, Scan):</strong> Buttons next to each result allow you to perform actions on that specific item, such as initiating a new scan on a subdomain, running a detailed analysis, or checking for changes.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Change Detection</h4>
-                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This powerful feature compares the live version of a page against its most recent snapshot on the Internet Archive. It queries the archive for the latest successful capture, fetches both versions, and displays a side-by-side comparison highlighting any text that has been added or removed. If changes are found, you have the option to archive the new version directly.</p>
+                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This powerful feature compares the live version of a page against its most recent snapshot on the Internet Archive. It queries the archive for the latest successful capture, fetches both versions, and displays a side-by-side comparison highlighting any text that has been added or removed. If no changes are found, it will inform you of the date of the last successful archive. If changes are detected, you have the option to archive the new version directly.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Visual Maps</h4>
@@ -250,7 +251,7 @@
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Automated Scanning</h4>
-                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> This feature transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically perform a subdomain search, run a diff check on each result, and archive any subdomains that have changed. Schedules can be set to run weekly, bi-weekly, monthly, or every other month, and can be managed from the Scheduler modal.</p>
+                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> This feature transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically perform a subdomain search, run a diff check on each result, and archive any subdomains that have changed. Schedules can be set to run daily, weekly, bi-weekly, monthly, or every other month, and can be managed from the Scheduler modal.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Configuration</h4>
@@ -289,6 +290,7 @@
                         <input type="text" id="schedule-domain-input" placeholder="Enter domain (e.g., example.com)" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
                         <input type="datetime-local" id="schedule-start-date" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
                         <select id="schedule-frequency" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                            <option value="daily">Daily</option>
                             <option value="weekly">Weekly</option>
                             <option value="bi-weekly">Bi-Weekly</option>
                             <option value="monthly">Monthly</option>
@@ -310,6 +312,7 @@
 
 
     <script>
+      document.addEventListener('DOMContentLoaded', () => {
         const API_BASE_URL = 'http://127.0.0.1:5010';
         let currentResults = [];
         let scanSummaryData = null;
@@ -335,6 +338,7 @@
         const techBtn = document.getElementById('tech-btn');
         const headersBtn = document.getElementById('headers-btn');
         const linksBtn = document.getElementById('links-btn');
+        const diffMainBtn = document.getElementById('diff-main-btn');
         const selectAllContainer = document.getElementById('select-all-container');
         const selectAllCheckbox = document.getElementById('select-all-checkbox');
 
@@ -368,6 +372,84 @@
         const scheduleStatusMessage = document.getElementById('schedule-status-message');
         const scheduledJobsList = document.getElementById('scheduled-jobs-list');
         
+        // Make functions globally available for onclick attributes
+        window.runDiffCheck = async function(url, index) {
+            let statusSpan = null;
+            if (index !== -1) {
+                statusSpan = document.getElementById(`status-${index}`);
+                statusSpan.textContent = 'Checking...';
+                statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
+            }
+
+            diffOutput.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+            diffSummary.textContent = 'Checking for changes...';
+            archiveNewVersionBtn.classList.add('hidden');
+            diffModal.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/check-diff`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (data.has_changes) {
+                    diffOutput.innerHTML = data.diff_html;
+                    diffSummary.textContent = 'Changes detected. Review the differences below.';
+                    archiveNewVersionBtn.classList.remove('hidden');
+                    archiveNewVersionBtn.onclick = () => {
+                        closeDiffModalBtn.click();
+                        archiveUrl(url, index);
+                    };
+                } else {
+                    diffOutput.innerHTML = `<p class="text-center p-8 text-lg">${data.message || 'No changes found.'}</p>`;
+                    diffSummary.textContent = data.message || 'No changes found.';
+                }
+                
+                if (statusSpan) {
+                    statusSpan.textContent = data.has_changes ? 'Changed' : 'Unchanged';
+                    statusSpan.className = `text-sm font-medium ${data.has_changes ? 'text-green-500' : 'text-gray-500'} flex-shrink-0`;
+                }
+
+            } catch (err) {
+                diffOutput.innerHTML = `<p class="text-red-500">${err.message}</p>`;
+                diffSummary.textContent = `Error: ${err.message}`;
+                if (statusSpan) {
+                    statusSpan.textContent = 'Diff Error';
+                    statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
+                }
+            }
+        }
+
+        window.runSingleTechAnalysis = function(url) { runAnalysis('/detect-tech', `Technology Stack for ${url}`, { url }); }
+        window.runSingleHeaderAnalysis = function(url) { runAnalysis('/analyze-headers', `Security Headers for ${url}`, { url }); }
+        window.scanSubdomain = function(subdomain) {
+            urlInput.value = subdomain;
+            performStreamingScan();
+        }
+
+        window.deleteSchedule = async function(id) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    loadSchedules();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (e) {
+                alert('Failed to delete schedule.');
+            }
+        }
 
         function addResultItem(item, index) {
             const div = document.createElement('div');
@@ -413,50 +495,6 @@
             
             resultsList.appendChild(div);
         }
-
-        async function runDiffCheck(url, index) {
-            const statusSpan = document.getElementById(`status-${index}`);
-            statusSpan.textContent = 'Checking...';
-            statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
-
-            diffOutput.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
-            diffSummary.textContent = '';
-            archiveNewVersionBtn.classList.add('hidden');
-            diffModal.classList.remove('hidden');
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/check-diff`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url }),
-                });
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                if (data.has_changes) {
-                    diffOutput.innerHTML = data.diff_html;
-                    diffSummary.textContent = 'Changes detected. Review the differences below.';
-                    archiveNewVersionBtn.classList.remove('hidden');
-                    archiveNewVersionBtn.onclick = () => {
-                        closeDiffModalBtn.click();
-                        archiveUrl(url, index);
-                    };
-                } else {
-                    diffOutput.innerHTML = '';
-                    diffSummary.textContent = data.message || 'No changes found.';
-                }
-                statusSpan.textContent = data.has_changes ? 'Changed' : 'Unchanged';
-                statusSpan.className = `text-sm font-medium ${data.has_changes ? 'text-green-500' : 'text-gray-500'} flex-shrink-0`;
-
-            } catch (err) {
-                diffOutput.innerHTML = `<p class="text-red-500">${err.message}</p>`;
-                statusSpan.textContent = 'Diff Error';
-                statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
-            }
-        }
         
         // --- Scheduler Functions ---
         async function loadSchedules() {
@@ -483,24 +521,6 @@
                 });
             } catch (e) {
                 scheduledJobsList.innerHTML = '<p class="text-red-500">Could not load schedules.</p>';
-            }
-        }
-
-        async function deleteSchedule(id) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/delete-schedule`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id }),
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    loadSchedules();
-                } else {
-                    alert(`Error: ${data.error}`);
-                }
-            } catch (e) {
-                alert('Failed to delete schedule.');
             }
         }
         
@@ -566,11 +586,6 @@
                 addResultItem(item, index);
             });
             updateActionButtonsState();
-        }
-
-        function scanSubdomain(subdomain) {
-            urlInput.value = subdomain;
-            performStreamingScan();
         }
 
         function getDomainName(url) {
@@ -874,9 +889,6 @@
             }
         }
         
-        function runSingleTechAnalysis(url) { runAnalysis('/detect-tech', `Technology Stack for ${url}`, { url }); }
-        function runSingleHeaderAnalysis(url) { runAnalysis('/analyze-headers', `Security Headers for ${url}`, { url }); }
-
         // --- Event Listeners ---
         exportCsvBtn.addEventListener('click', () => {
             const selectedCheckboxes = document.querySelectorAll('.result-checkbox:checked');
@@ -1017,10 +1029,23 @@
         techBtn.addEventListener('click', () => runAnalysis('/detect-tech', 'Technology Stack', { url: urlInput.value }));
         headersBtn.addEventListener('click', () => runAnalysis('/analyze-headers', 'Security Headers', { url: urlInput.value }));
         linksBtn.addEventListener('click', () => {
+            if (currentResults.length === 0) {
+                errorMessage.textContent = 'No links found to check. Please run a "Scan Site" first.';
+                setTimeout(() => errorMessage.textContent = '', 3000);
+                return;
+            }
             const urlsToCheck = currentResults.map(item => typeof item === 'string' ? item : item.name);
             runAnalysis('/check-links', 'Broken Link Check', { urls: urlsToCheck });
         });
-        
+        diffMainBtn.addEventListener('click', () => {
+            const url = urlInput.value;
+            if (url) {
+                window.runDiffCheck(url, -1);
+            } else {
+                errorMessage.textContent = 'Please enter a URL in the input box first.';
+            }
+        });
+      });
     </script>
 </body>
 </html>

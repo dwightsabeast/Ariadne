@@ -17,3 +17,6 @@ pip install -r requirements.txt
 REM Run the application
 echo "Starting Ariadne backend..."
 python backend.py
+
+PAUSE
+
