@@ -19,16 +19,16 @@
 
 ## Features
 
+![Ariadne_v 026 1](https://github.com/user-attachments/assets/37068fe5-4e8d-49e9-a4a6-19070dd095ca)
 
-This tool provides comprehensive website scanning capabilities, starting from a main-level URL. It features robust subdomain discovery and allows you to configure the scan depth, including the option to follow external links beyond the initial domain. During a scan, the tool performs 404 broken link checks, scans for key security headers, and can generate a sitemap on-the-fly.
+
+This tool enables users to scan a top level domain with up to 5 levels of depth, or "clicks", including the option to follow external links beyond the initial domain. The level and reach of Ariadne's scans ensures all links are found. Ariande also features robust subdomain discovery tool complete with passive and active discovery methods, a wildcard detection system, and the ability to brute force subdomain searches. After these scans have completed, the tool allows users to perform 404 broken link checks, scans for key security headers, and will generate a sitemap on-the-fly.
 
 <div align="center"><img width="764" height="362" alt="image" src="https://github.com/user-attachments/assets/d4b86a24-3639-4d8c-bdc0-2a8f2a256709" /></div>
 
-Key features include the ability to export all discovered links, sites, and subdomains to a .csv file for external analysis. You can also archive found links directly to the Internet Archive, with support for scheduling regular archives. Additionally, the tool offers a "diff" functionality to compare scan results over time, helping you track changes. For advanced use, it also supports the ability to add and use proxies for scanning.
+When the user has sufficiently sluethed a site, Ariadne gives the option to export to a .csv file, and archive all discovered links, sites, and subdomains. Before the user archives anything, they are given the option to diff anything found during a scan. This diff function allows users to see if any changes have been made to the given page since the last time that page was saved to the Internet Archive. This diff function occurs during scheduled scans in order to minimize archiving unchanged pages.
 
 <div align="center"><img width="813" height="379" alt="image" src="https://github.com/user-attachments/assets/f99932ef-632a-4158-b65f-161a35d470ca" /></div>
-
-
 
 ## Prerequisites
 
