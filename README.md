@@ -7,6 +7,7 @@
 ## 📋 Table of Contents
 
 - [Features](#features)
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 
 ## ℹ️ Project Information
@@ -49,5 +50,10 @@ Place the ```chromedriver.exe``` ```THIRD_PARTY_NOTICES.chromedriver``` ```LICEN
 
 Run ```start.bat``` (this will create a venv folder and install required Python dependencies on your first startup)
 
+<div align="center"><img width="685" height="356" alt="image" src="https://github.com/user-attachments/assets/2ab6a8b9-82ca-4170-96b3-6249da5ec2f8" /></div>
+
+
 Run ```index.html```
+
+<div align="center"><img width="640" height="349" alt="image" src="https://github.com/user-attachments/assets/951978d2-2748-4e5b-ac05-0b616a17570e" /></div>
 
