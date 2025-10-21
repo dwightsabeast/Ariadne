@@ -121,7 +121,11 @@
                 <input type="checkbox" id="follow-external-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                 <label for="follow-external-checkbox" class="ml-2 text-sm text-gray-300">Follow External Links</label>
             </div>
-            <p class="text-xs text-yellow-400 mt-3 text-center sm:text-left">Note: Scans with a depth greater than 1 may take significantly longer.</p>
+            <div class="flex items-center mt-3">
+                <input type="checkbox" id="brute-force-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="brute-force-checkbox" class="ml-2 text-sm text-gray-300">Enable Brute-Force (Subdomain Scans)</label>
+            </div>
+            <p class="text-xs text-yellow-400 mt-3 text-center sm:text-left">Note: Scans with a depth greater than 1 or with brute-force enabled may take significantly longer.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <button id="scan-button" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Scan Site</button>
                 <button id="subdomain-button" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">Find Subdomains</button>
@@ -221,12 +225,13 @@
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Main Scanning Features</h4>
                     <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. It uses a three-stage process: first, it looks for a <code>sitemap.xml</code> file. If not found, it launches an automated browser to crawl the site by following hyperlinks, simulating user scrolling to find dynamically loaded content. Finally, it analyzes the site's JavaScript files to discover hidden paths.</p>
-                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain using several advanced techniques, including checking Certificate Transparency logs, performing various DNS lookups (MX, NS), and using Reverse DNS lookups.</p>
+                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain using several advanced techniques. It aggregates results from passive sources like Google, Certificate Transparency logs, and ThreatCrowd, and then validates each result to ensure it is live. For deeper scans, it can also perform an active brute-force attack using a large wordlist to find unlisted subdomains.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Scan Options</h4>
                     <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to. Higher depths can significantly increase scan time.</p>
                     <p class="text-sm mt-1"><strong>Follow External Links:</strong> When checked, this allows the 'Scan Site' crawler to follow hyperlinks to different websites, up to the specified depth.</p>
+                    <p class="text-sm mt-1"><strong>Enable Brute-Force:</strong> When finding subdomains, checking this box enables the active brute-force scan, which is more thorough but takes longer to complete.</p>
                 </div>
                  <div>
                     <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
@@ -323,6 +328,7 @@
         const urlInput = document.getElementById('url-input');
         const depthInput = document.getElementById('depth-input');
         const followExternalCheckbox = document.getElementById('follow-external-checkbox');
+        const bruteForceCheckbox = document.getElementById('brute-force-checkbox');
         const scanButton = document.getElementById('scan-button');
         const subdomainButton = document.getElementById('subdomain-button');
         const loadingSpinner = document.getElementById('loading-spinner');
@@ -692,12 +698,13 @@
             currentScanType = 'subdomain';
             setUILoading(true);
             const scanStartTime = Date.now();
+            const bruteForce = bruteForceCheckbox.checked;
             
             try {
                 const response = await fetch(`${API_BASE_URL}/find-subdomains`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain: getDomainName(url) }),
+                    body: JSON.stringify({ domain: getDomainName(url), brute_force: bruteForce }),
                 });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || `HTTP error! status: ${response.status}`);

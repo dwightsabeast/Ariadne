@@ -9,3 +9,5 @@ python-whois
 urllib3
 pysocks
 APScheduler
+concurrent-log-handler
+googlesearch-python

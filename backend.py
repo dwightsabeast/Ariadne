@@ -26,8 +26,12 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from datetime import datetime
+from datetime import datetime, timezone
 import atexit
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
+import string
+from googlesearch import search
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed for this specific app
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -42,6 +46,7 @@ PROXY_CYCLE = None
 PROXIES_ENABLED = True
 SETTINGS_FILE = 'settings.json'
 SCHEDULES_FILE = 'schedules.json'
+SUBDOMAIN_WORDLIST = 'subdomains.txt'
 
 # --- Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -88,21 +93,174 @@ def load_proxies():
 
 # --- Core Logic Functions (Internal, for scheduler use) ---
 
-def find_subdomains_internal(domain):
-    found_subdomains = set()
+def find_subdomains_internal(domain, brute_force=False):
+    potential_subdomains = set()
+
+    # --- Passive Discovery ---
+    # Site Crawl for links
     try:
-        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15, verify=False)
+        print(f"Crawling https://www.{domain} for subdomain links...")
+        response = requests.get(f"https://www.{domain}", timeout=15, verify=False)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            try:
+                hostname = urlparse(href).hostname
+                if hostname and hostname.endswith(domain) and hostname != domain:
+                    potential_subdomains.add((hostname, 'Crawl'))
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"Error crawling main site: {e}")
+
+    # Google Search
+    try:
+        query = f"site:*.{domain}"
+        for url in search(query, num_results=50):
+            try:
+                hostname = urlparse(url).hostname
+                if hostname and hostname.endswith(domain) and hostname != domain:
+                    potential_subdomains.add((hostname, 'Google'))
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"Error querying Google: {e}")
+
+    try:
+        # ThreatCrowd API
+        response = requests.get(f"https://www.threatcrowd.org/searchApi/v2/domain/report/?domain={domain}", timeout=15, verify=False)
         if response.ok:
-            for cert in response.json():
+            data = response.json()
+            if data.get('subdomains'):
+                for sub in data['subdomains']:
+                    potential_subdomains.add((sub, 'ThreatCrowd'))
+    except Exception as e:
+        print(f"Error querying ThreatCrowd: {e}")
+
+    try:
+        # crt.sh - Increased timeout and include expired
+        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json&exclude=expired", timeout=60, verify=False)
+        if response.ok:
+            certs = response.json()
+            for cert in certs:
                 name_value = cert.get('name_value')
                 if name_value:
-                    subdomains = name_value.split('\n')
-                    for sub in subdomains:
-                        if sub.endswith(f".{domain}") and '*' not in sub and sub != domain:
-                            found_subdomains.add(sub)
+                    subdomains_from_cert = name_value.split('\n')
+                    for sub in subdomains_from_cert:
+                        clean_sub = sub.strip()
+                        if clean_sub.endswith(f".{domain}") and '*' not in clean_sub and clean_sub != domain:
+                            potential_subdomains.add((clean_sub, 'CT'))
     except Exception as e:
-        print(f"Scheduled scan: Error querying crt.sh for {domain}: {e}")
-    return sorted(list(found_subdomains))
+        print(f"Error querying crt.sh: {e}")
+
+    # DNS lookups
+    for record_type in ['MX', 'NS', 'A']:
+        try:
+            answers = dns.resolver.resolve(domain, record_type)
+            for rdata in answers:
+                if record_type in ['MX', 'NS']:
+                    hostname = rdata.exchange.to_text().rstrip('.') if record_type == 'MX' else rdata.target.to_text().rstrip('.')
+                    if hostname.endswith(domain) and hostname != domain:
+                        potential_subdomains.add((hostname, record_type))
+                elif record_type == 'A':
+                    ip = rdata.to_text()
+                    try:
+                        rev_name = dns.reversename.from_address(ip)
+                        rev_answers = dns.resolver.resolve(rev_name, "PTR")
+                        for rev_rdata in rev_answers:
+                            hostname = rev_rdata.to_text().rstrip('.')
+                            if hostname.endswith(domain) and hostname != domain:
+                                 potential_subdomains.add((hostname, 'PTR'))
+                    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
+                        continue
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers, dns.exception.Timeout):
+            continue
+
+    # --- Validation Step ---
+    print(f"Found {len(potential_subdomains)} potential subdomains from passive sources. Validating...")
+    validated_subdomains = set()
+    
+    def validate_subdomain(sub_tuple):
+        sub, source = sub_tuple
+        try:
+            dns.resolver.resolve(sub, 'A')
+            return (sub, source)
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+            try:
+                dns.resolver.resolve(sub, 'CNAME')
+                return (sub, source)
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+                return None
+
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        future_to_sub = {executor.submit(validate_subdomain, sub): sub for sub in potential_subdomains}
+        for future in as_completed(future_to_sub):
+            result = future.result()
+            if result:
+                validated_subdomains.add(result)
+    
+    print(f"Validated {len(validated_subdomains)} live subdomains from passive sources.")
+
+    # --- Active Brute-Force Discovery ---
+    if brute_force:
+        print("Starting DNS brute-force with content-based wildcard detection...")
+        wildcard_content = None
+        try:
+            random_sub = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+            wildcard_check_domain = f"{random_sub}.{domain}"
+            dns.resolver.resolve(wildcard_check_domain, 'A')
+            print("Wildcard DNS record detected. Fetching baseline content...")
+            try:
+                response = requests.get(f"https://{wildcard_check_domain}", timeout=5, verify=False)
+                wildcard_content = response.text
+                print("Baseline content captured.")
+            except requests.RequestException:
+                print("Could not fetch baseline content via HTTPS. Brute-force may have false positives.")
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+            print("No wildcard DNS detected.")
+            pass # This is the expected outcome if no wildcard exists
+        except Exception as e:
+            print(f"Error during wildcard detection: {e}")
+
+
+        try:
+            with open(SUBDOMAIN_WORDLIST, 'r') as f:
+                wordlist = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            
+            subdomains_to_check = [f"{word}.{domain}" for word in wordlist]
+
+            def resolve_brute_force(sub):
+                try:
+                    # First, confirm it resolves in DNS
+                    dns.resolver.resolve(sub, 'A')
+                    
+                    # If wildcard content exists, compare against it
+                    if wildcard_content:
+                        try:
+                            response = requests.get(f"https://{sub}", timeout=5, verify=False)
+                            if response.text != wildcard_content:
+                                return (sub, 'Brute-Force')
+                        except requests.RequestException:
+                            return (sub, 'Brute-Force (Unverified Content)') # Resolves but can't fetch content
+                    else:
+                        return (sub, 'Brute-Force') # No wildcard, so any resolving sub is valid
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+                    return None
+                return None
+
+            with ThreadPoolExecutor(max_workers=100) as executor:
+                results = executor.map(resolve_brute_force, subdomains_to_check)
+                for result in results:
+                    if result:
+                        validated_subdomains.add(result)
+            print("DNS brute-force complete.")
+        except FileNotFoundError:
+            print(f"Warning: {SUBDOMAIN_WORDLIST} not found. Skipping brute-force.")
+        except Exception as e:
+            print(f"An error occurred during brute-forcing: {e}")
+
+    return [{"name": name, "type": type} for name, type in sorted(list(validated_subdomains))]
+
 
 def check_diff_internal(url):
     try:
@@ -164,13 +322,14 @@ def archive_url_internal(url):
 def run_scheduled_scan(domain):
     """The main function that the scheduler will execute."""
     print(f"--- Running scheduled scan for {domain} at {datetime.now()} ---")
-    subdomains = find_subdomains_internal(domain)
+    subdomains = find_subdomains_internal(domain, brute_force=True) # Always brute-force for scheduled scans
     if not subdomains:
         print(f"No subdomains found for {domain}. Scan complete.")
         return
 
     print(f"Found {len(subdomains)} subdomains. Checking each for changes...")
-    for subdomain in subdomains:
+    for subdomain_info in subdomains:
+        subdomain = subdomain_info['name']
         full_url = f"https://{subdomain}"
         print(f"Checking: {full_url}")
         if check_diff_internal(full_url):
@@ -383,57 +542,11 @@ def scan_site():
 def find_subdomains_endpoint():
     data = request.get_json()
     domain = data.get('domain')
+    brute_force = data.get('brute_force', False)
     if not domain:
         return jsonify({"error": "Domain is required"}), 400
-        
-    found_subdomains = set()
-
-    try:
-        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15, verify=False)
-        if response.ok:
-            for cert in response.json():
-                name_value = cert.get('name_value')
-                if name_value:
-                    subdomains = name_value.split('\n')
-                    for sub in subdomains:
-                        if sub.endswith(f".{domain}") and '*' not in sub and sub != domain:
-                            found_subdomains.add((sub, 'CT'))
-    except Exception as e:
-        print(f"Error querying crt.sh: {e}")
-
-    for record_type in ['MX', 'NS', 'CNAME']:
-        try:
-            answers = dns.resolver.resolve(domain, record_type)
-            for rdata in answers:
-                hostname = rdata.target.to_text().rstrip('.') if record_type != 'MX' else rdata.exchange.to_text().rstrip('.')
-                if hostname.endswith(domain) and hostname != domain:
-                    found_subdomains.add((hostname, record_type))
-        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers, dns.exception.Timeout):
-            continue
-        except Exception as e:
-            print(f"Error querying {record_type} records for {domain}: {e}")
-
-    try:
-        answers = dns.resolver.resolve(domain, 'A')
-        for rdata in answers:
-            ip = rdata.to_text()
-            try:
-                rev_name = dns.reversename.from_address(ip)
-                rev_answers = dns.resolver.resolve(rev_name, "PTR")
-                for rev_rdata in rev_answers:
-                    hostname = rev_rdata.to_text().rstrip('.')
-                    if hostname.endswith(domain) and hostname != domain:
-                         found_subdomains.add((hostname, 'PTR'))
-            except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
-                continue
-            except Exception as e:
-                print(f"Reverse DNS lookup error for {ip}: {e}")
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
-         pass
-    except Exception as e:
-        print(f"Error during initial A record lookup for {domain}: {e}")
     
-    results = [{"name": name, "type": type} for name, type in sorted(list(found_subdomains))]
+    results = find_subdomains_internal(domain, brute_force)
     return jsonify({"subdomains": results})
 
 
@@ -523,8 +636,8 @@ def check_diff():
         latest_timestamp = snapshots[-1][0]
         try:
             # Format the timestamp for better readability
-            date_obj = datetime.strptime(latest_timestamp, '%Y%m%d%H%M%S')
-            formatted_date = date_obj.strftime('%B %d, %Y at %I:%M %p')
+            date_obj = datetime.strptime(latest_timestamp, '%Y%m%d%H%M%S').replace(tzinfo=timezone.utc)
+            formatted_date = date_obj.astimezone().strftime('%B %d, %Y at %I:%M %p %Z')
         except ValueError:
             formatted_date = latest_timestamp # Fallback to raw timestamp
 
