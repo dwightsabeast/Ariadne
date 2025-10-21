@@ -31,8 +31,11 @@ Key features include the ability to export all discovered links, sites, and subd
 
 ## Prerequisites
 
-Python 3.14.0 or later
+[Python 3.14.0](https://www.python.org/downloads/ "Python 3.14.0") or later
 
+The [latest chromedriver](https://googlechromelabs.github.io/chrome-for-testing/ "latest chromedriver") downloaded and placed into the same folder you wish to run Ariadne from
+
+The [latest FireFox geckodriver](https://github.com/mozilla/geckodriver/releases "latest FireFox geckodriver") downloaded and placed into the same folder you wish to run Ariadne from
 
 ## Installation
 
