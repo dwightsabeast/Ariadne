@@ -2,7 +2,7 @@
 
 > Ariadne is an advanced tool used to scan, map, and archive a wide variety of websites.
 
-![License](https://img.shields.io/badge/license-GNU_GPLv3-green) ![Version](https://img.shields.io/badge/version-v.026.1-blue) ![Language](https://img.shields.io/badge/language-PYTHON-yellow) 
+![License](https://img.shields.io/badge/license-GNU_GPLv3-green) ![Version](https://img.shields.io/badge/version-v.027.1-blue) ![Language](https://img.shields.io/badge/language-PYTHON-yellow) 
 
 ## 📋 Table of Contents
 
