@@ -14,7 +14,7 @@
 
 - **👤 Author:** dwightsabeast
 - **📦 Version:** v.026.1
-- **📄 License:** Unlicense
+- **📄 License:** GNU GPLv3 
 - **🏷️ Keywords:** archival, OSINT, site-discovery
 
 ## Features
