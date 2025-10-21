@@ -39,7 +39,15 @@ The [latest FireFox geckodriver](https://github.com/mozilla/geckodriver/releases
 
 ## Installation
 
-Run ```start.bat```
+Download and unzip the Source Code release
+
+Place the ```chromedriver.exe``` ```THIRD_PARTY_NOTICES.chromedriver``` ```LICENSE.chromedriver``` and ```geckodriver.exe``` into the some folder you unzipped Ariadne to
+
+<div align="center"><img width="846" height="674" alt="Screenshot 2025-10-20 183452" src="https://github.com/user-attachments/assets/e730a953-206b-4e8d-900f-726fb1430332" /></div>
+
+
+
+Run ```start.bat``` (this will create a venv folder and install required Python dependencies on your first startup)
 
 Run ```index.html```
 
