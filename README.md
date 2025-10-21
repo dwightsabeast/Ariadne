@@ -13,7 +13,7 @@
 ## ℹ️ Project Information
 
 - **👤 Author:** dwightsabeast
-- **📦 Version:** v.026
+- **📦 Version:** v.026.1
 - **📄 License:** Unlicense
 - **🏷️ Keywords:** archival, OSINT, site-discovery
 
