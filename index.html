@@ -94,6 +94,16 @@
                 <p class="text-gray-400 mt-1">A comprehensive tool for site and subdomain discovery.</p>
             </div>
             <div class="flex items-center space-x-2 w-auto justify-end">
+                 <button id="archives-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="View Local Archives">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                 </button>
+                 <button id="history-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Load Last Scan Results">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                 </button>
                 <button id="scheduler-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Scheduler">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -102,7 +112,7 @@
                 <button id="about-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="About this Tool">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </button>
-                <button id="proxy-settings-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Proxy Settings">
+                <button id="settings-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Settings">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8m-4-4v2m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8" /></svg>
                 </button>
             </div>
@@ -144,9 +154,10 @@
                         <label for="select-all-checkbox" class="ml-2 text-sm text-gray-300">Select All</label>
                     </div>
                 </div>
-                <div class="flex gap-2 flex-wrap">
+                <div class="flex gap-2 flex-wrap justify-end">
                     <button id="sitemap-btn" class="hidden bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition">View Map</button>
                     <button id="export-csv-btn" class="hidden bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">Export Selected</button>
+                    <button id="save-all-local-btn" class="hidden bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save All Local</button>
                     <button id="archive-all-btn" class="hidden bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition">Archive</button>
                 </div>
             </div>
@@ -192,23 +203,33 @@
         </div>
     </div>
 
-    <div id="proxy-modal" class="hidden">
+    <div id="settings-modal" class="hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2">
              <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold">Proxy Settings</h3>
-                <button id="close-proxy-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+                <h3 class="text-xl font-bold">Settings</h3>
+                <button id="close-settings-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
             </div>
-            <div class="p-6">
-                <label for="proxy-textarea" class="block text-sm font-medium text-gray-300 mb-2">Enter proxies, one per line (e.g., http://user:pass@host:port)</label>
-                <textarea id="proxy-textarea" rows="10" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
-                <div class="flex items-center my-4">
-                    <input type="checkbox" id="enable-proxies-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                    <label for="enable-proxies-checkbox" class="ml-2 text-sm text-gray-300">Enable Proxies for Archiving</label>
+            <div class="p-6 space-y-6">
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100 mb-2">Proxy Settings</h4>
+                    <label for="proxy-textarea" class="block text-sm font-medium text-gray-300 mb-2">Enter proxies, one per line (e.g., http://user:pass@host:port)</label>
+                    <textarea id="proxy-textarea" rows="8" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
+                    <div class="flex items-center my-4">
+                        <input type="checkbox" id="enable-proxies-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <label for="enable-proxies-checkbox" class="ml-2 text-sm text-gray-300">Enable Proxies for Archiving</label>
+                    </div>
                 </div>
-                <p id="proxy-status-message" class="text-sm mt-2"></p>
+                
+                <div class="border-t border-gray-700 pt-4">
+                     <h4 class="text-lg font-semibold text-gray-100 mb-2">Archive Settings</h4>
+                     <label for="archive-folder-input" class="block text-sm font-medium text-gray-300 mb-2">Local Archive Subfolder (e.g., "my-domain")</label>
+                    <input type="text" id="archive-folder-input" placeholder="Leave blank to save in main archive" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-gray-200 border-gray-600">
+                </div>
+
+                <p id="settings-status-message" class="text-sm mt-2"></p>
                 <div class="mt-4 flex justify-end">
-                    <button id="save-proxy-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save Settings</button>
+                    <button id="save-settings-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save Settings</button>
                 </div>
             </div>
         </div>
@@ -262,6 +283,10 @@
                     <h4 class="text-lg font-semibold text-gray-100">Configuration</h4>
                     <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Allows you to provide a list of proxy servers. When archiving pages, the tool will rotate through this list to find a working proxy. You can also enable or disable the use of proxies entirely with a toggle switch.</p>
                 </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-100">Convenience Features</h4>
+                    <p class="text-sm mt-1"><strong>Load Last Scan Results:</strong> The tool automatically saves the results of your most recent subdomain scan. Use the history button (clock icon) in the top-right corner to instantly reload these results without running the scan again.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -314,6 +339,21 @@
             </div>
         </div>
     </div>
+    
+    <div id="local-archive-modal" class="hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold">Local Archives</h3>
+                <button id="close-local-archive-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div class="p-6">
+                <div id="local-archives-list" class="space-y-3 max-h-80 overflow-y-auto">
+                    <!-- Saved archives will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
 
 
     <script>
@@ -323,6 +363,7 @@
         let scanSummaryData = null;
         let scanStartTime = 0;
         let currentScanType = '';
+        let currentArchiveFolder = '';
 
         // DOM Elements
         const urlInput = document.getElementById('url-input');
@@ -339,6 +380,7 @@
         const errorMessage = document.getElementById('error-message');
         const exportCsvBtn = document.getElementById('export-csv-btn');
         const archiveAllBtn = document.getElementById('archive-all-btn');
+        const saveAllLocalBtn = document.getElementById('save-all-local-btn');
         const sitemapBtn = document.getElementById('sitemap-btn');
         const analysisContainer = document.getElementById('analysis-container');
         const techBtn = document.getElementById('tech-btn');
@@ -353,8 +395,8 @@
         const closeSitemapModalBtn = document.getElementById('close-sitemap-modal-btn');
         const analysisModal = document.getElementById('analysis-modal');
         const closeAnalysisModalBtn = document.getElementById('close-analysis-modal-btn');
-        const proxyModal = document.getElementById('proxy-modal');
-        const closeProxyModalBtn = document.getElementById('close-proxy-modal-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsModalBtn = document.getElementById('close-settings-modal-btn');
         const aboutModal = document.getElementById('about-modal');
         const aboutBtn = document.getElementById('about-btn');
         const closeAboutModalBtn = document.getElementById('close-about-modal-btn');
@@ -363,11 +405,12 @@
         const diffOutput = document.getElementById('diff-output');
         const diffSummary = document.getElementById('diff-summary');
         const archiveNewVersionBtn = document.getElementById('archive-new-version-btn');
-        const proxySettingsBtn = document.getElementById('proxy-settings-btn');
+        const settingsBtn = document.getElementById('settings-btn');
         const proxyTextarea = document.getElementById('proxy-textarea');
         const enableProxiesCheckbox = document.getElementById('enable-proxies-checkbox');
-        const proxyStatusMessage = document.getElementById('proxy-status-message');
-        const saveProxyBtn = document.getElementById('save-proxy-btn');
+        const archiveFolderInput = document.getElementById('archive-folder-input');
+        const settingsStatusMessage = document.getElementById('settings-status-message');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
         const schedulerModal = document.getElementById('scheduler-modal');
         const schedulerBtn = document.getElementById('scheduler-btn');
         const closeSchedulerModalBtn = document.getElementById('close-scheduler-modal-btn');
@@ -377,6 +420,11 @@
         const saveScheduleBtn = document.getElementById('save-schedule-btn');
         const scheduleStatusMessage = document.getElementById('schedule-status-message');
         const scheduledJobsList = document.getElementById('scheduled-jobs-list');
+        const historyBtn = document.getElementById('history-btn');
+        const archivesBtn = document.getElementById('archives-btn');
+        const localArchiveModal = document.getElementById('local-archive-modal');
+        const closeLocalArchiveModalBtn = document.getElementById('close-local-archive-modal-btn');
+        const localArchivesList = document.getElementById('local-archives-list');
         
         // Make functions globally available for onclick attributes
         window.runDiffCheck = async function(url, index) {
@@ -456,18 +504,71 @@
                 alert('Failed to delete schedule.');
             }
         }
+        
+        window.saveLocalCopy = function(link, index) {
+            return new Promise((resolve) => {
+                let statusSpan = null;
+                if (index !== -1) {
+                    statusSpan = document.getElementById(`local-status-${index}`);
+                }
+
+                const updateStatus = (text, colorClass, title = '') => {
+                    if (statusSpan) {
+                        statusSpan.textContent = text;
+                        statusSpan.className = `text-sm font-medium ${colorClass} flex-shrink-0 ml-2`;
+                        statusSpan.title = title;
+                    } else {
+                        // Fallback for base URL save
+                        resultsSummary.textContent = text;
+                        resultsSummary.className = `text-sm mb-4 ${colorClass}`;
+                    }
+                };
+
+                updateStatus('Saving...', 'text-gray-400');
+
+                const fullUrl = link.startsWith('http') ? link : `https://${link}`;
+                const folder = archiveFolderInput.value;
+                const eventSource = new EventSource(`${API_BASE_URL}/save-local-copy?url=${encodeURIComponent(fullUrl)}&folder=${encodeURIComponent(folder)}`);
+
+                eventSource.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.status) {
+                        updateStatus(data.status, 'text-yellow-500');
+                    }
+                    if (data.success) {
+                        updateStatus('Saved!', 'text-green-500', data.success);
+                        eventSource.close();
+                        resolve();
+                    }
+                    if (data.error) {
+                        updateStatus('Failed!', 'text-red-500', data.error);
+                        eventSource.close();
+                        resolve();
+                    }
+                };
+                eventSource.addEventListener('end', () => resolve());
+                eventSource.onerror = () => {
+                    updateStatus('Failed!', 'text-red-500', 'Connection error to the backend server.');
+                    eventSource.close();
+                    resolve();
+                };
+            });
+        }
 
         function addResultItem(item, index) {
             const div = document.createElement('div');
             div.className = 'result-item flex items-center justify-between p-2 rounded transition';
             
             let displayName, linkUrl;
-            let actionsHtml = `<span id="status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0"></span>`;
+            let archiveStatusHtml = `<span id="status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0"></span>`;
+            let localStatusHtml = `<span id="local-status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0 ml-2"></span>`;
+            let actionsHtml = '';
 
             if (currentScanType === 'sitemap') {
                 displayName = item;
                 linkUrl = item;
-                actionsHtml += `
+                actionsHtml = `
+                    <button onclick="saveLocalCopy('${linkUrl}', ${index})" class="ml-2 bg-blue-600 text-white px-2 py-1 text-xs rounded hover:bg-blue-700 transition" title="Save Local Copy">Save</button>
                     <button onclick="runDiffCheck('${linkUrl}', ${index})" class="ml-2 bg-teal-600 text-white px-2 py-1 text-xs rounded hover:bg-teal-700 transition" title="Check for Changes">Diff</button>
                     <button onclick="runSingleTechAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
                     <button onclick="runSingleHeaderAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
@@ -476,7 +577,8 @@
                  displayName = `${item.name} <span class="text-xs text-gray-400 ml-2">(${item.type})</span>`;
                  linkUrl = item.name;
                  const fullSubdomainUrl = `https://${linkUrl}`;
-                 actionsHtml += `
+                 actionsHtml = `
+                    <button onclick="saveLocalCopy('${fullSubdomainUrl}', ${index})" class="ml-2 bg-blue-600 text-white px-2 py-1 text-xs rounded hover:bg-blue-700 transition" title="Save Local Copy">Save</button>
                     <button onclick="runDiffCheck('${fullSubdomainUrl}', ${index})" class="ml-2 bg-teal-600 text-white px-2 py-1 text-xs rounded hover:bg-teal-700 transition" title="Check for Changes">Diff</button>
                     <button onclick="runSingleTechAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
                     <button onclick="runSingleHeaderAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
@@ -495,6 +597,8 @@
                     <a href="${fullUrl}" target="_blank" class="text-blue-500 hover:underline">${displayName}</a>
                 </div>
                 <div class="flex items-center flex-shrink-0">
+                    ${archiveStatusHtml}
+                    ${localStatusHtml}
                     ${actionsHtml}
                 </div>
             `;
@@ -548,6 +652,7 @@
             const hasResults = currentResults.length > 0;
             exportCsvBtn.classList.toggle('hidden', !show);
             archiveAllBtn.classList.toggle('hidden', !show);
+            saveAllLocalBtn.classList.toggle('hidden', !show);
             sitemapBtn.classList.toggle('hidden', !show);
             analysisContainer.classList.toggle('hidden', !show);
             selectAllContainer.classList.toggle('hidden', !hasResults); // Only show select all if there are results
@@ -561,16 +666,23 @@
             exportCsvBtn.disabled = selectedCount === 0;
             exportCsvBtn.classList.toggle('opacity-50', selectedCount === 0);
 
-            const archiveDisabled = hasResults && selectedCount === 0;
-            archiveAllBtn.disabled = archiveDisabled;
-            archiveAllBtn.classList.toggle('opacity-50', archiveDisabled);
+            const actionButtonsDisabled = hasResults && selectedCount === 0;
+            
+            archiveAllBtn.disabled = actionButtonsDisabled;
+            archiveAllBtn.classList.toggle('opacity-50', actionButtonsDisabled);
+            
+            saveAllLocalBtn.disabled = actionButtonsDisabled;
+            saveAllLocalBtn.classList.toggle('opacity-50', actionButtonsDisabled);
 
             if (selectedCount > 0) {
                 archiveAllBtn.textContent = `Archive ${selectedCount} Selected`;
+                saveAllLocalBtn.textContent = `Save ${selectedCount} Local`;
             } else if (!hasResults) {
                 archiveAllBtn.textContent = 'Archive Base URL';
+                saveAllLocalBtn.textContent = 'Save Base URL Local';
             } else {
                 archiveAllBtn.textContent = 'Archive';
+                saveAllLocalBtn.textContent = 'Save All Local';
             }
         }
 
@@ -786,16 +898,58 @@
             }
 
             const initialButtonText = archiveAllBtn.textContent;
+            const initialSummaryText = resultsSummary.textContent;
             archiveAllBtn.disabled = true;
+            archiveAllBtn.textContent = 'Archiving...';
 
             for (let i = 0; i < itemsToArchive.length; i++) {
                 const item = itemsToArchive[i];
-                archiveAllBtn.textContent = `Archiving ${i + 1} of ${itemsToArchive.length}...`;
+                resultsSummary.textContent = `Archiving ${i + 1} of ${itemsToArchive.length}...`;
                 await archiveUrl(item.link, item.index);
                 if (i < itemsToArchive.length - 1) await new Promise(resolve => setTimeout(resolve, 500));
             }
             
             archiveAllBtn.textContent = initialButtonText;
+            resultsSummary.textContent = initialSummaryText;
+            updateActionButtonsState();
+        }
+
+        async function saveAllLocalResults() {
+            const selectedCheckboxes = Array.from(document.querySelectorAll('.result-checkbox:checked'));
+            let itemsToSave = [];
+
+            if (selectedCheckboxes.length > 0) {
+                itemsToSave = selectedCheckboxes.map(cb => {
+                    const link = cb.dataset.link;
+                    const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
+                    const originalIndex = currentResults.indexOf(originalItem);
+                    
+                    let fullUrl = link;
+                    if (currentScanType === 'subdomain') {
+                        fullUrl = `https://${link}`;
+                    }
+                    return { link: fullUrl, index: originalIndex };
+                });
+            } else if (currentResults.length === 0 && urlInput.value) {
+                itemsToSave.push({ link: urlInput.value, index: -1 }); // index -1 for base URL
+            } else {
+                return;
+            }
+
+            const initialButtonText = saveAllLocalBtn.textContent;
+            const initialSummaryText = resultsSummary.textContent;
+            saveAllLocalBtn.disabled = true;
+            saveAllLocalBtn.textContent = 'Saving...';
+
+            for (let i = 0; i < itemsToSave.length; i++) {
+                const item = itemsToSave[i];
+                resultsSummary.textContent = `Saving ${i + 1} of ${itemsToSave.length}...`;
+                await window.saveLocalCopy(item.link, item.index);
+                if (i < itemsToSave.length - 1) await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between saves
+            }
+            
+            saveAllLocalBtn.textContent = initialButtonText;
+            resultsSummary.textContent = initialSummaryText;
             updateActionButtonsState();
         }
 
@@ -925,6 +1079,7 @@
         });
         
         archiveAllBtn.addEventListener('click', archiveSelectedResults);
+        saveAllLocalBtn.addEventListener('click', saveAllLocalResults);
         scanButton.addEventListener('click', performStreamingScan);
         subdomainButton.addEventListener('click', performSubdomainSearch);
         
@@ -953,43 +1108,47 @@
         closeAnalysisModalBtn.addEventListener('click', () => analysisModal.classList.add('hidden'));
         closeDiffModalBtn.addEventListener('click', () => diffModal.classList.add('hidden'));
         
-        proxySettingsBtn.addEventListener('click', async () => {
-            proxyModal.classList.remove('hidden');
-            proxyStatusMessage.textContent = '';
+        settingsBtn.addEventListener('click', async () => {
+            settingsModal.classList.remove('hidden');
+            settingsStatusMessage.textContent = '';
             try {
-                const response = await fetch(`${API_BASE_URL}/get-proxy-settings`);
+                const response = await fetch(`${API_BASE_URL}/get-settings`);
                 const data = await response.json();
                 if (response.ok) {
                     proxyTextarea.value = data.proxies;
                     enableProxiesCheckbox.checked = data.enabled;
+                    archiveFolderInput.value = data.archive_folder;
+                    currentArchiveFolder = data.archive_folder; // Store current folder
                 } else {
                     throw new Error(data.error || 'Failed to load settings');
                 }
             } catch (e) {
-                proxyStatusMessage.textContent = 'Error loading proxy settings.';
-                proxyStatusMessage.className = 'text-sm mt-2 text-red-500';
+                settingsStatusMessage.textContent = 'Error loading settings.';
+                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
             }
         });
-        closeProxyModalBtn.addEventListener('click', () => proxyModal.classList.add('hidden'));
-        saveProxyBtn.addEventListener('click', async () => {
+        closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+        saveSettingsBtn.addEventListener('click', async () => {
             const proxies = proxyTextarea.value;
             const enabled = enableProxiesCheckbox.checked;
+            const archive_folder = archiveFolderInput.value;
             try {
-                const response = await fetch(`${API_BASE_URL}/update-proxy-settings`, {
+                const response = await fetch(`${API_BASE_URL}/update-settings`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ proxies, enabled }),
+                    body: JSON.stringify({ proxies, enabled, archive_folder }),
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    proxyStatusMessage.textContent = data.message;
-                    proxyStatusMessage.className = 'text-sm mt-2 text-green-500';
+                    settingsStatusMessage.textContent = data.message;
+                    settingsStatusMessage.className = 'text-sm mt-2 text-green-500';
+                    currentArchiveFolder = archive_folder; // Update current folder
                 } else {
                     throw new Error(data.error || 'Failed to save');
                 }
             } catch (e) {
-                proxyStatusMessage.textContent = e.message;
-                proxyStatusMessage.className = 'text-sm mt-2 text-red-500';
+                settingsStatusMessage.textContent = e.message;
+                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
             }
         });
 
@@ -1001,6 +1160,55 @@
             loadSchedules();
         });
         closeSchedulerModalBtn.addEventListener('click', () => schedulerModal.classList.add('hidden'));
+
+        historyBtn.addEventListener('click', async () => {
+             try {
+                const response = await fetch(`${API_BASE_URL}/get-last-results`);
+                const data = await response.json();
+                if (data.domain && data.subdomains) {
+                    currentScanType = 'subdomain';
+                    displayStaticResults(`Saved Results for ${data.domain}`, data.subdomains, "Loaded");
+                    urlInput.value = data.domain; // Also populate the input box
+                } else {
+                    errorMessage.textContent = 'No previous results found to load.';
+                    setTimeout(() => errorMessage.textContent = '', 3000);
+                }
+            } catch (e) {
+                console.error("Could not load last results.", e);
+                errorMessage.textContent = 'Error loading previous results.';
+                setTimeout(() => errorMessage.textContent = '', 3000);
+            }
+        });
+        
+        archivesBtn.addEventListener('click', async () => {
+            localArchivesList.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+            localArchiveModal.classList.remove('hidden');
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-local-archives`);
+                const files = await response.json();
+                if (response.ok) {
+                    if (files.length === 0) {
+                        localArchivesList.innerHTML = '<p class="text-gray-400">No local archives found.</p>';
+                        return;
+                    }
+                    localArchivesList.innerHTML = '';
+                    files.forEach(file => {
+                        const a = document.createElement('a');
+                        a.href = `${API_BASE_URL}/local_archives/${file}`;
+                        a.textContent = file;
+                        a.target = '_blank';
+                        a.className = 'block p-2 text-blue-400 hover:underline hover:bg-gray-700 rounded';
+                        localArchivesList.appendChild(a);
+                    });
+                } else {
+                    throw new Error(files.error || 'Failed to load archives');
+                }
+            } catch (e) {
+                localArchivesList.innerHTML = `<p class="text-red-500">${e.message}</p>`;
+            }
+        });
+        closeLocalArchiveModalBtn.addEventListener('click', () => localArchiveModal.classList.add('hidden'));
+
 
         saveScheduleBtn.addEventListener('click', async () => {
             const domain = scheduleDomainInput.value;
@@ -1052,6 +1260,7 @@
                 errorMessage.textContent = 'Please enter a URL in the input box first.';
             }
         });
+
       });
     </script>
 </body>

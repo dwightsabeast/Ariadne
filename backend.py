@@ -2,7 +2,7 @@ import re
 import requests
 import socket
 import time
-from flask import Flask, jsonify, request, Response, stream_with_context
+from flask import Flask, jsonify, request, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -32,6 +32,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import random
 import string
 from googlesearch import search
+import ipaddress
+import os
+import base64
+import mimetypes
+from werkzeug.utils import secure_filename
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed for this specific app
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -44,31 +49,39 @@ CORS(app)
 PROXY_LIST = []
 PROXY_CYCLE = None
 PROXIES_ENABLED = True
+ARCHIVE_FOLDER = ""
 SETTINGS_FILE = 'settings.json'
 SCHEDULES_FILE = 'schedules.json'
 SUBDOMAIN_WORDLIST = 'subdomains.txt'
+LAST_RESULTS_FILE = 'last_results.json'
+LOCAL_ARCHIVES_DIR = 'local_archives'
 
 # --- Scheduler Setup ---
 scheduler = BackgroundScheduler()
 
 def load_settings():
     """Loads settings from the settings file."""
-    global PROXIES_ENABLED
+    global PROXIES_ENABLED, ARCHIVE_FOLDER
     try:
         with open(SETTINGS_FILE, 'r') as f:
             settings = json.load(f)
             PROXIES_ENABLED = settings.get('proxies_enabled', True)
-        print(f"Settings loaded: Proxies enabled -> {PROXIES_ENABLED}")
+            ARCHIVE_FOLDER = settings.get('archive_folder', "")
+        print(f"Settings loaded: Proxies enabled -> {PROXIES_ENABLED}, Archive Folder -> '{ARCHIVE_FOLDER}'")
     except (FileNotFoundError, json.JSONDecodeError):
         print(f"{SETTINGS_FILE} not found or invalid. Creating with default settings.")
         PROXIES_ENABLED = True
+        ARCHIVE_FOLDER = ""
         save_settings()
 
 def save_settings():
     """Saves the current settings to the settings file."""
     with open(SETTINGS_FILE, 'w') as f:
-        json.dump({'proxies_enabled': PROXIES_ENABLED}, f, indent=4)
-    print(f"Settings saved: Proxies enabled -> {PROXIES_ENABLED}")
+        json.dump({
+            'proxies_enabled': PROXIES_ENABLED,
+            'archive_folder': ARCHIVE_FOLDER
+        }, f, indent=4)
+    print(f"Settings saved: Proxies enabled -> {PROXIES_ENABLED}, Archive Folder -> '{ARCHIVE_FOLDER}'")
 
 
 def load_proxies():
@@ -96,22 +109,54 @@ def load_proxies():
 def find_subdomains_internal(domain, brute_force=False):
     potential_subdomains = set()
 
-    # --- Passive Discovery ---
-    # Site Crawl for links
+    # --- DNS Zone Transfer (AXFR) Attempt ---
+    print("Attempting DNS Zone Transfer (AXFR)...")
     try:
-        print(f"Crawling https://www.{domain} for subdomain links...")
-        response = requests.get(f"https://www.{domain}", timeout=15, verify=False)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        for a in soup.find_all('a', href=True):
-            href = a['href']
+        ns_answers = dns.resolver.resolve(domain, 'NS')
+        for ns_server in ns_answers:
             try:
-                hostname = urlparse(href).hostname
-                if hostname and hostname.endswith(domain) and hostname != domain:
-                    potential_subdomains.add((hostname, 'Crawl'))
-            except Exception:
-                continue
+                ns_addr = dns.resolver.resolve(ns_server.target, 'A')[0].to_text()
+                zone = dns.zone.from_xfr(dns.query.xfr(ns_addr, domain, timeout=5))
+                for name, node in zone.nodes.items():
+                    subdomain = f"{name}.{domain}"
+                    potential_subdomains.add((subdomain, 'AXFR'))
+                print(f"Zone transfer successful from {ns_server}!")
+                break 
+            except Exception as e:
+                print(f"Zone transfer failed from {ns_server}: {e}")
+                continue 
     except Exception as e:
-        print(f"Error crawling main site: {e}")
+        print(f"Could not get nameservers for AXFR attempt: {e}")
+
+
+    # --- Passive Discovery ---
+    # Site Crawl for links (using Selenium)
+    driver = None
+    try:
+        print(f"Crawling https://{domain} with headless browser for subdomain links...")
+        driver = get_chrome_driver()
+        if driver:
+            # Try both www and non-www
+            for url_to_crawl in [f"https://www.{domain}", f"https://{domain}"]:
+                try:
+                    driver.get(url_to_crawl)
+                    time.sleep(5) 
+                    soup = BeautifulSoup(driver.page_source, 'html.parser')
+                    for a in soup.find_all('a', href=True):
+                        href = a['href']
+                        try:
+                            hostname = urlparse(href).hostname
+                            if hostname and hostname.endswith(domain) and hostname != domain:
+                                potential_subdomains.add((hostname, 'Crawl'))
+                        except Exception:
+                            continue
+                except Exception as e:
+                    print(f"Could not crawl {url_to_crawl}: {e}")
+    except Exception as e:
+        print(f"Error crawling main site with browser: {e}")
+    finally:
+        if driver:
+            driver.quit()
 
     # Google Search
     try:
@@ -154,6 +199,7 @@ def find_subdomains_internal(domain, brute_force=False):
         print(f"Error querying crt.sh: {e}")
 
     # DNS lookups
+    main_ips = set()
     for record_type in ['MX', 'NS', 'A']:
         try:
             answers = dns.resolver.resolve(domain, record_type)
@@ -164,6 +210,7 @@ def find_subdomains_internal(domain, brute_force=False):
                         potential_subdomains.add((hostname, record_type))
                 elif record_type == 'A':
                     ip = rdata.to_text()
+                    main_ips.add(ip)
                     try:
                         rev_name = dns.reversename.from_address(ip)
                         rev_answers = dns.resolver.resolve(rev_name, "PTR")
@@ -176,88 +223,75 @@ def find_subdomains_internal(domain, brute_force=False):
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers, dns.exception.Timeout):
             continue
 
-    # --- Validation Step ---
-    print(f"Found {len(potential_subdomains)} potential subdomains from passive sources. Validating...")
-    validated_subdomains = set()
+    # --- Reverse DNS on IP Blocks ---
+    print("Performing Reverse DNS lookups on related IP blocks...")
+    ip_nets_to_scan = {ipaddress.ip_network(f'{ip}/24', strict=False) for ip in main_ips}
     
-    def validate_subdomain(sub_tuple):
-        sub, source = sub_tuple
+    def reverse_dns_lookup(ip):
         try:
-            dns.resolver.resolve(sub, 'A')
-            return (sub, source)
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-            try:
-                dns.resolver.resolve(sub, 'CNAME')
-                return (sub, source)
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-                return None
+            rev_name = dns.reversename.from_address(str(ip))
+            hostname = dns.resolver.resolve(rev_name, "PTR")[0].to_text().rstrip('.')
+            if hostname.endswith(domain):
+                return (hostname, 'Rev-IP')
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
+            pass
+        except Exception:
+            pass # Suppress other errors
+        return None
 
     with ThreadPoolExecutor(max_workers=100) as executor:
-        future_to_sub = {executor.submit(validate_subdomain, sub): sub for sub in potential_subdomains}
+        futures = []
+        for net in ip_nets_to_scan:
+            for ip in net.hosts():
+                futures.append(executor.submit(reverse_dns_lookup, ip))
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                potential_subdomains.add(result)
+    print("Reverse DNS lookups complete.")
+
+
+    # --- Unified Validation for all sources (Passive + Brute Force) ---
+    all_subs_to_check = {sub[0] for sub in potential_subdomains}
+    sources = {sub[0]: sub[1] for sub in potential_subdomains}
+
+    if brute_force:
+        print("Brute-force enabled, adding wordlist...")
+        try:
+            with open(SUBDOMAIN_WORDLIST, 'r') as f:
+                wordlist = {line.strip() for line in f if line.strip() and not line.startswith('#')}
+            for word in wordlist:
+                sub_name = f"{word}.{domain}"
+                if sub_name not in all_subs_to_check:
+                    all_subs_to_check.add(sub_name)
+                    sources[sub_name] = 'Brute-Force'
+        except FileNotFoundError:
+            print(f"Warning: {SUBDOMAIN_WORDLIST} not found. Skipping brute-force.")
+
+    print(f"Starting validation for {len(all_subs_to_check)} unique potential subdomains...")
+    
+    validated_subdomains = set()
+
+    def check_subdomain(sub):
+        try:
+            dns.resolver.resolve(sub, 'A')
+            return (sub, sources.get(sub, 'Brute-Force'))
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+            try:
+                # Fallback to check for CNAME record
+                dns.resolver.resolve(sub, 'CNAME')
+                return (sub, sources.get(sub, 'CNAME'))
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+                return None
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        future_to_sub = {executor.submit(check_subdomain, sub): sub for sub in all_subs_to_check}
         for future in as_completed(future_to_sub):
             result = future.result()
             if result:
                 validated_subdomains.add(result)
-    
-    print(f"Validated {len(validated_subdomains)} live subdomains from passive sources.")
-
-    # --- Active Brute-Force Discovery ---
-    if brute_force:
-        print("Starting DNS brute-force with content-based wildcard detection...")
-        wildcard_content = None
-        try:
-            random_sub = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
-            wildcard_check_domain = f"{random_sub}.{domain}"
-            dns.resolver.resolve(wildcard_check_domain, 'A')
-            print("Wildcard DNS record detected. Fetching baseline content...")
-            try:
-                response = requests.get(f"https://{wildcard_check_domain}", timeout=5, verify=False)
-                wildcard_content = response.text
-                print("Baseline content captured.")
-            except requests.RequestException:
-                print("Could not fetch baseline content via HTTPS. Brute-force may have false positives.")
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-            print("No wildcard DNS detected.")
-            pass # This is the expected outcome if no wildcard exists
-        except Exception as e:
-            print(f"Error during wildcard detection: {e}")
-
-
-        try:
-            with open(SUBDOMAIN_WORDLIST, 'r') as f:
-                wordlist = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-            
-            subdomains_to_check = [f"{word}.{domain}" for word in wordlist]
-
-            def resolve_brute_force(sub):
-                try:
-                    # First, confirm it resolves in DNS
-                    dns.resolver.resolve(sub, 'A')
-                    
-                    # If wildcard content exists, compare against it
-                    if wildcard_content:
-                        try:
-                            response = requests.get(f"https://{sub}", timeout=5, verify=False)
-                            if response.text != wildcard_content:
-                                return (sub, 'Brute-Force')
-                        except requests.RequestException:
-                            return (sub, 'Brute-Force (Unverified Content)') # Resolves but can't fetch content
-                    else:
-                        return (sub, 'Brute-Force') # No wildcard, so any resolving sub is valid
-                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-                    return None
-                return None
-
-            with ThreadPoolExecutor(max_workers=100) as executor:
-                results = executor.map(resolve_brute_force, subdomains_to_check)
-                for result in results:
-                    if result:
-                        validated_subdomains.add(result)
-            print("DNS brute-force complete.")
-        except FileNotFoundError:
-            print(f"Warning: {SUBDOMAIN_WORDLIST} not found. Skipping brute-force.")
-        except Exception as e:
-            print(f"An error occurred during brute-forcing: {e}")
 
     return [{"name": name, "type": type} for name, type in sorted(list(validated_subdomains))]
 
@@ -547,6 +581,14 @@ def find_subdomains_endpoint():
         return jsonify({"error": "Domain is required"}), 400
     
     results = find_subdomains_internal(domain, brute_force)
+    
+    try:
+        with open(LAST_RESULTS_FILE, 'w') as f:
+            json.dump({'domain': domain, 'subdomains': results}, f, indent=4)
+        print(f"Saved last search results for {domain}.")
+    except Exception as e:
+        print(f"Error saving last results: {e}")
+        
     return jsonify({"subdomains": results})
 
 
@@ -682,6 +724,38 @@ def get_schedules():
         })
     return jsonify(jobs)
 
+@app.route('/get-local-archives', methods=['GET'])
+def get_local_archives():
+    """Lists all locally archived files, scanning subdirectories."""
+    try:
+        archived_files = []
+        for root, dirs, files in os.walk(LOCAL_ARCHIVES_DIR):
+            for file in files:
+                if file.endswith('.html'):
+                    # Get the relative path from the archives dir
+                    relative_path = os.path.relpath(os.path.join(root, file), LOCAL_ARCHIVES_DIR)
+                    archived_files.append(relative_path.replace("\\", "/")) # Ensure cross-platform paths
+        return jsonify(sorted(archived_files, reverse=True))
+    except FileNotFoundError:
+        return jsonify([])
+    except Exception as e:
+        print(f"Error listing local archives: {e}")
+        return jsonify({"error": "Could not retrieve archive list."}), 500
+
+@app.route('/local_archives/<path:filename>')
+def serve_local_archive(filename):
+    """Serves a specific locally archived HTML file."""
+    return send_from_directory(LOCAL_ARCHIVES_DIR, filename)
+
+@app.route('/get-last-results', methods=['GET'])
+def get_last_results():
+    try:
+        with open(LAST_RESULTS_FILE, 'r') as f:
+            data = json.load(f)
+        return jsonify(data)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({})
+
 @app.route('/schedule-scan', methods=['POST'])
 def schedule_scan():
     """Schedules a new recurring scan."""
@@ -753,6 +827,98 @@ def delete_schedule():
     except Exception as e:
         return jsonify({"error": f"Failed to delete schedule: {e}"}), 500
 
+@app.route('/save-local-copy', methods=['GET'])
+def save_local_copy():
+    url = request.args.get('url')
+    folder_name = request.args.get('folder', '')
+
+    if not url:
+        return Response(stream_with_context('data: {"error": "URL is required"}\n\n'), mimetype='text/event-stream')
+
+    def generate():
+        def yield_event(data):
+            return f"data: {json.dumps(data)}\n\n"
+
+        driver = None
+        try:
+            yield yield_event({"status": "Loading page in browser..."})
+            driver = get_chrome_driver()
+            if not driver:
+                yield yield_event({"error": "Could not initialize web driver."})
+                return
+
+            driver.get(url)
+            time.sleep(5) # Wait for JS to render
+            
+            page_source = driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            # Helper to fetch assets and convert to Base64
+            def fetch_and_embed(tag, attr):
+                try:
+                    asset_url = tag.get(attr)
+                    if not asset_url or asset_url.startswith('data:'):
+                        return
+                    
+                    full_asset_url = urljoin(url, asset_url)
+                    response = requests.get(full_asset_url, timeout=10, verify=False)
+                    if response.status_code == 200:
+                        mime_type, _ = mimetypes.guess_type(full_asset_url)
+                        if not mime_type:
+                            mime_type = response.headers.get('Content-Type', 'application/octet-stream')
+                        
+                        encoded_content = base64.b64encode(response.content).decode('utf-8')
+                        tag[attr] = f"data:{mime_type};base64,{encoded_content}"
+                except Exception as e:
+                    print(f"Could not embed asset {asset_url}: {e}")
+
+            yield yield_event({"status": "Embedding CSS..."})
+            for link in soup.find_all('link', rel='stylesheet'):
+                fetch_and_embed(link, 'href')
+
+            yield yield_event({"status": "Embedding Images..."})
+            for img in soup.find_all('img'):
+                fetch_and_embed(img, 'src')
+                if img.get('srcset'): # Handle responsive images
+                    del img['srcset'] # Simplification: remove srcset to force src
+
+            yield yield_event({"status": "Embedding Scripts..."})
+            for script in soup.find_all('script'):
+                if script.get('src'):
+                    fetch_and_embed(script, 'src')
+            
+            yield yield_event({"status": "Saving file..."})
+            
+            # Create a safe filename
+            domain = urlparse(url).hostname or 'unknown'
+            path = urlparse(url).path.replace('/', '_') or 'index'
+            filename = f"{domain}{path}.html"
+            filename = re.sub(r'[^\w\.-]', '_', filename) # Clean filename
+            
+            # Sanitize folder name
+            sane_folder = secure_filename(folder_name)
+            target_dir = os.path.join(LOCAL_ARCHIVES_DIR, sane_folder) if sane_folder else LOCAL_ARCHIVES_DIR
+            
+            os.makedirs(target_dir, exist_ok=True)
+            
+            save_path = os.path.join(target_dir, filename)
+            with open(save_path, 'w', encoding='utf-8') as f:
+                f.write(str(soup))
+            
+            relative_path = os.path.relpath(save_path, LOCAL_ARCHIVES_DIR).replace("\\", "/")
+            yield yield_event({"success": f"Saved as {relative_path}"})
+
+        except Exception as e:
+            print(f"Error saving local copy for {url}: {e}")
+            yield yield_event({"error": f"Failed to save local copy: {e}"})
+        finally:
+            if driver:
+                driver.quit()
+            yield "event: end\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
 # --- Other Endpoints (get_ip, get_registrar, etc.) ---
 @app.route('/get-ip', methods=['POST'])
 def get_ip_address():
@@ -784,30 +950,36 @@ def get_registrar():
     except Exception as e:
         print(f"Error during WHOIS lookup for {domain}: {e}")
         return jsonify({"registrar": "Error or not found"})
-@app.route('/get-proxy-settings', methods=['GET'])
-def get_proxy_settings():
+@app.route('/get-settings', methods=['GET'])
+def get_settings():
     try:
         with open('proxies.txt', 'r') as f:
             proxies_content = f.read()
     except FileNotFoundError:
         proxies_content = "# Add proxy addresses here, one per line (e.g., http://user:pass@host:port).\n"
-    return jsonify({"proxies": proxies_content, "enabled": PROXIES_ENABLED})
-@app.route('/update-proxy-settings', methods=['POST'])
-def update_proxy_settings():
-    global PROXIES_ENABLED
+    return jsonify({
+        "proxies": proxies_content, 
+        "enabled": PROXIES_ENABLED,
+        "archive_folder": ARCHIVE_FOLDER
+    })
+@app.route('/update-settings', methods=['POST'])
+def update_settings():
+    global PROXIES_ENABLED, ARCHIVE_FOLDER
     data = request.get_json()
     proxies_content = data.get('proxies', '')
     proxies_enabled_state = data.get('enabled', True)
+    archive_folder_name = data.get('archive_folder', '')
     try:
         with open('proxies.txt', 'w') as f:
             f.write(proxies_content)
         load_proxies()
         PROXIES_ENABLED = proxies_enabled_state
+        ARCHIVE_FOLDER = archive_folder_name
         save_settings()
-        return jsonify({"message": "Proxy settings saved successfully."})
+        return jsonify({"message": "Settings saved successfully."})
     except Exception as e:
-        print(f"Error saving proxy settings: {e}")
-        return jsonify({"error": "Failed to save proxy settings on the server."}), 500
+        print(f"Error saving settings: {e}")
+        return jsonify({"error": "Failed to save settings on the server."}), 500
 @app.route('/analyze-headers', methods=['POST'])
 def analyze_headers_endpoint():
     data = request.get_json()
@@ -874,6 +1046,7 @@ def check_links_endpoint():
 
 
 if __name__ == '__main__':
+    os.makedirs(LOCAL_ARCHIVES_DIR, exist_ok=True)
     load_settings()
     load_proxies()
     scheduler.start()
