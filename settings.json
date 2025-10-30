@@ -1,3 +1,8 @@
 {
-    "proxies_enabled": false
+    "proxies_enabled": false,
+    "archive_folder": "",
+    "auth_domain": "https://www.thevespiary.org",
+    "auth_cookie_name": "PHPSESSID",
+    "auth_cookie_value": "b4e04d3b60a633052bc3be3a66927fe4",
+    "dns_timeout": 10.0
 }

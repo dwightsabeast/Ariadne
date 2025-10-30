@@ -38,6 +38,29 @@ import base64
 import mimetypes
 from werkzeug.utils import secure_filename
 
+# NEW: Import selenium-stealth
+try:
+    from selenium_stealth import stealth
+except ImportError:
+    print("selenium-stealth not found. Run 'pip install selenium-stealth'. Bot detection may fail.")
+    stealth = None
+
+try:
+    from urllib3.contrib.socks import SOCKSProxyManager
+except ImportError:
+    print("SOCKS proxy support is not available. Please install 'pysocks'.")
+    SOCKSProxyManager = None
+
+# --- Custom DNS Resolver ---
+# Explicitly configure a resolver to use reliable public DNS servers.
+# This avoids issues with local/system resolvers that may fail or time out.
+my_resolver = dns.resolver.Resolver()
+my_resolver.nameservers = ['8.8.8.8', '8.8.4.4', '1.1.1.1']
+my_resolver.timeout = 5.0  # Set a reasonable timeout
+my_resolver.lifetime = 5.0 # Set a reasonable lifetime
+# --- End Custom DNS Resolver ---
+
+
 # Suppress only the single InsecureRequestWarning from urllib3 needed for this specific app
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -50,6 +73,7 @@ PROXY_LIST = []
 PROXY_CYCLE = None
 PROXIES_ENABLED = True
 ARCHIVE_FOLDER = ""
+AUTH_COOKIE = None # NEW: Global var for auth cookie
 SETTINGS_FILE = 'settings.json'
 SCHEDULES_FILE = 'schedules.json'
 SUBDOMAIN_WORDLIST = 'subdomains.txt'
@@ -61,25 +85,49 @@ scheduler = BackgroundScheduler()
 
 def load_settings():
     """Loads settings from the settings file."""
-    global PROXIES_ENABLED, ARCHIVE_FOLDER
+    global PROXIES_ENABLED, ARCHIVE_FOLDER, AUTH_COOKIE
     try:
         with open(SETTINGS_FILE, 'r') as f:
             settings = json.load(f)
             PROXIES_ENABLED = settings.get('proxies_enabled', True)
             ARCHIVE_FOLDER = settings.get('archive_folder', "")
+            
+            # NEW: Load auth cookie settings
+            cookie_domain = settings.get('cookie_domain')
+            cookie_name = settings.get('cookie_name')
+            cookie_value = settings.get('cookie_value')
+            
+            if cookie_domain and cookie_name and cookie_value:
+                AUTH_COOKIE = {
+                    'name': cookie_name,
+                    'value': cookie_value,
+                    'domain': cookie_domain
+                }
+                print(f"Authentication cookie loaded for domain: {cookie_domain}")
+            else:
+                AUTH_COOKIE = None
+
         print(f"Settings loaded: Proxies enabled -> {PROXIES_ENABLED}, Archive Folder -> '{ARCHIVE_FOLDER}'")
     except (FileNotFoundError, json.JSONDecodeError):
         print(f"{SETTINGS_FILE} not found or invalid. Creating with default settings.")
         PROXIES_ENABLED = True
         ARCHIVE_FOLDER = ""
-        save_settings()
+        AUTH_COOKIE = None
+        save_settings() # Will save with default (empty) auth settings
 
 def save_settings():
     """Saves the current settings to the settings file."""
+    cookie_domain = AUTH_COOKIE['domain'] if AUTH_COOKIE else ""
+    cookie_name = AUTH_COOKIE['name'] if AUTH_COOKIE else ""
+    cookie_value = AUTH_COOKIE['value'] if AUTH_COOKIE else ""
+    
     with open(SETTINGS_FILE, 'w') as f:
         json.dump({
             'proxies_enabled': PROXIES_ENABLED,
-            'archive_folder': ARCHIVE_FOLDER
+            'archive_folder': ARCHIVE_FOLDER,
+            'cookie_domain': cookie_domain,
+            'cookie_name': cookie_name,
+            'cookie_value': cookie_value
         }, f, indent=4)
     print(f"Settings saved: Proxies enabled -> {PROXIES_ENABLED}, Archive Folder -> '{ARCHIVE_FOLDER}'")
 
@@ -112,10 +160,10 @@ def find_subdomains_internal(domain, brute_force=False):
     # --- DNS Zone Transfer (AXFR) Attempt ---
     print("Attempting DNS Zone Transfer (AXFR)...")
     try:
-        ns_answers = dns.resolver.resolve(domain, 'NS')
+        ns_answers = my_resolver.resolve(domain, 'NS')
         for ns_server in ns_answers:
             try:
-                ns_addr = dns.resolver.resolve(ns_server.target, 'A')[0].to_text()
+                ns_addr = my_resolver.resolve(ns_server.target, 'A')[0].to_text()
                 zone = dns.zone.from_xfr(dns.query.xfr(ns_addr, domain, timeout=5))
                 for name, node in zone.nodes.items():
                     subdomain = f"{name}.{domain}"
@@ -134,13 +182,39 @@ def find_subdomains_internal(domain, brute_force=False):
     driver = None
     try:
         print(f"Crawling https://{domain} with headless browser for subdomain links...")
-        driver = get_chrome_driver()
+        driver = get_chrome_driver(domain_for_cookie=domain) # Pass domain for cookie
         if driver:
             # Try both www and non-www
             for url_to_crawl in [f"https://www.{domain}", f"https://{domain}"]:
                 try:
                     driver.get(url_to_crawl)
-                    time.sleep(5) 
+                    # --- Improved dynamic content scroll ---
+                    # CHANGED: Wait for a specific element that indicates the *real* page loaded
+                    try:
+                        WebDriverWait(driver, 20).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "body[id], body[class]")) # Wait for a body with any id or class
+                        )
+                    except TimeoutException:
+                        print(f"Timeout waiting for main page content at {url_to_crawl}. Page might be static or challenge failed.")
+                        # Proceed anyway, maybe it's a simple page
+                    
+                    last_height = driver.execute_script("return document.body.scrollHeight")
+                    scroll_pause_time = 1.5 # Time to wait after each scroll
+                    
+                    while True:
+                        # Scroll down to bottom
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        
+                        # Wait to load page
+                        time.sleep(scroll_pause_time) 
+                        
+                        # Calculate new scroll height and compare with last scroll height
+                        new_height = driver.execute_script("return document.body.scrollHeight")
+                        if new_height == last_height:
+                            break # Reached the bottom
+                        last_height = new_height
+                    # --- End of improved scroll ---
+                    
                     soup = BeautifulSoup(driver.page_source, 'html.parser')
                     for a in soup.find_all('a', href=True):
                         href = a['href']
@@ -184,7 +258,7 @@ def find_subdomains_internal(domain, brute_force=False):
 
     try:
         # crt.sh - Increased timeout and include expired
-        response = requests.get(f"https://crt.sh/?q=%.{domain}&output=json&exclude=expired", timeout=60, verify=False)
+        response = requests.get(f"https.crt.sh/?q=%.{domain}&output=json&exclude=expired", timeout=60, verify=False)
         if response.ok:
             certs = response.json()
             for cert in certs:
@@ -202,7 +276,7 @@ def find_subdomains_internal(domain, brute_force=False):
     main_ips = set()
     for record_type in ['MX', 'NS', 'A']:
         try:
-            answers = dns.resolver.resolve(domain, record_type)
+            answers = my_resolver.resolve(domain, record_type)
             for rdata in answers:
                 if record_type in ['MX', 'NS']:
                     hostname = rdata.exchange.to_text().rstrip('.') if record_type == 'MX' else rdata.target.to_text().rstrip('.')
@@ -213,7 +287,7 @@ def find_subdomains_internal(domain, brute_force=False):
                     main_ips.add(ip)
                     try:
                         rev_name = dns.reversename.from_address(ip)
-                        rev_answers = dns.resolver.resolve(rev_name, "PTR")
+                        rev_answers = my_resolver.resolve(rev_name, "PTR")
                         for rev_rdata in rev_answers:
                             hostname = rev_rdata.to_text().rstrip('.')
                             if hostname.endswith(domain) and hostname != domain:
@@ -230,7 +304,7 @@ def find_subdomains_internal(domain, brute_force=False):
     def reverse_dns_lookup(ip):
         try:
             rev_name = dns.reversename.from_address(str(ip))
-            hostname = dns.resolver.resolve(rev_name, "PTR")[0].to_text().rstrip('.')
+            hostname = my_resolver.resolve(rev_name, "PTR")[0].to_text().rstrip('.')
             if hostname.endswith(domain):
                 return (hostname, 'Rev-IP')
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
@@ -274,12 +348,12 @@ def find_subdomains_internal(domain, brute_force=False):
 
     def check_subdomain(sub):
         try:
-            dns.resolver.resolve(sub, 'A')
+            my_resolver.resolve(sub, 'A')
             return (sub, sources.get(sub, 'Brute-Force'))
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
             try:
                 # Fallback to check for CNAME record
-                dns.resolver.resolve(sub, 'CNAME')
+                my_resolver.resolve(sub, 'CNAME')
                 return (sub, sources.get(sub, 'CNAME'))
             except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
                 return None
@@ -341,9 +415,20 @@ def archive_url_internal(url):
     for _ in range(num_proxies):
         proxy_line = next(PROXY_CYCLE).strip()
         if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
-            proxy_line = 'http://' + proxy_line
+            proxy_line = 'socks5://' + proxy_line
+        
         try:
-            http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE')
+            proxy_scheme = urlparse(proxy_line).scheme
+            
+            if proxy_scheme in ('socks4', 'socks5'):
+                if SOCKSProxyManager is None:
+                    raise ImportError("SOCKSProxyManager not available. 'pysocks' might be missing.")
+                http_manager = SOCKSProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+            elif proxy_scheme in ('http', 'https'):
+                http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+            else:
+                raise ValueError(f"Unsupported proxy scheme: {proxy_scheme}")
+
             response = http_manager.request('GET', archive_api_url, timeout=20.0)
             if response.status < 400:
                 print(f"Scheduled scan: Successfully archived {url} using proxy {proxy_line}.")
@@ -384,33 +469,75 @@ def get_domain_name(url):
             parsed_url = urlparse(url)
         
         domain = parsed_url.netloc.replace('www.', '')
+        # Handle domain parts like .co.uk
+        parts = domain.split('.')
+        if len(parts) > 2 and len(parts[-2]) <= 3 and len(parts[-1]) <= 3:
+             domain = '.'.join(parts[-3:])
+        else:
+             domain = '.'.join(parts[-2:])
         return domain
     except Exception as e:
         print(f"Error parsing domain from URL '{url}': {e}")
         return None
 
-def get_chrome_driver():
+# MODIFIED: Added domain_for_cookie parameter
+def get_chrome_driver(domain_for_cookie=None):
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # Add arguments to make Selenium less detectable
+    chrome_options.add_argument("start-maximized")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    
     try:
         service = Service(ChromeDriverManager().install())
-        return webdriver.Chrome(service=service, options=chrome_options)
+        driver = webdriver.Chrome(service=service, options=chrome_options)
     except (WebDriverException, ValueError) as e:
         print(f"Could not start WebDriver via manager: {e}. Falling back to default PATH if possible.")
         try:
-            return webdriver.Chrome(options=chrome_options)
+            driver = webdriver.Chrome(options=chrome_options)
         except WebDriverException as e_fallback:
             print(f"Fallback WebDriver initialization failed: {e_fallback}")
             return None
 
-def find_links_in_js(session, base_url, domain, follow_external):
+    # NEW: Apply selenium-stealth
+    if stealth:
+        stealth(driver,
+                languages=["en-US", "en"],
+                vendor="Google Inc.",
+                platform="Win32",
+                webgl_vendor="Intel Inc.",
+                renderer="Intel Iris OpenGL Engine",
+                fix_hairline=True,
+                )
+
+    # NEW: Add auth cookie if it's set and matches the domain
+    if AUTH_COOKIE and domain_for_cookie:
+        # Check if the scan domain is a subdomain of the cookie domain
+        if f".{domain_for_cookie}".endswith(AUTH_COOKIE['domain']):
+            try:
+                # Need to load a page in the domain *first* to set cookie
+                temp_url = f"https://{domain_for_cookie.lstrip('.')}"
+                driver.get(temp_url)
+                driver.add_cookie(AUTH_COOKIE)
+                print(f"Injected auth cookie for {domain_for_cookie}")
+            except Exception as e:
+                print(f"Warning: Could not set cookie for {domain_for_cookie}: {e}")
+        else:
+            print(f"Skipping cookie: Scan domain '{domain_for_cookie}' does not match cookie domain '{AUTH_COOKIE['domain']}'")
+
+
+    return driver
+
+def find_links_in_js(session, soup, base_url, domain, follow_external):
     js_links = set()
     try:
-        response = session.get(base_url, verify=False)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # 'soup' is now passed in as an argument, no need to fetch/parse
         for script in soup.find_all('script', src=True):
             script_url = urljoin(base_url, script['src'])
             if follow_external or get_domain_name(script_url) == domain:
@@ -423,6 +550,8 @@ def find_links_in_js(session, base_url, domain, follow_external):
                     print(f"Could not fetch JS file {script_url}: {e}")
     except requests.RequestException as e:
         print(f"Could not fetch base URL for JS scan {base_url}: {e}")
+    except Exception as e:
+        print(f"Error in find_links_in_js: {e}")
     return js_links
 
 def normalize_url_for_requests(url):
@@ -473,17 +602,24 @@ def scan_site():
 
         all_links = set()
         
+        # Site-based scans (like sitemap) will likely fail against bot protection
+        # But we try anyway.
         yield yield_event({"status": "Checking for sitemap..."})
         try:
+            # Use a session with a browser-like user agent
+            sitemap_session = requests.Session()
+            sitemap_session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
+            
             robots_url = urljoin(url, '/robots.txt')
             sitemap_urls = []
             try:
-                r = requests.get(robots_url, timeout=5, verify=False)
+                r = sitemap_session.get(robots_url, timeout=10, verify=False)
                 if r.ok:
                     for line in r.text.splitlines():
                         if line.lower().startswith('sitemap:'):
                             sitemap_urls.append(line.split(':', 1)[1].strip())
-            except requests.RequestException:
+            except requests.RequestException as e:
+                print(f"Could not fetch robots.txt: {e}")
                 pass 
             
             if not sitemap_urls:
@@ -491,7 +627,7 @@ def scan_site():
 
             for sitemap_url in sitemap_urls:
                 try:
-                    r = requests.get(sitemap_url, timeout=5, verify=False)
+                    r = sitemap_session.get(sitemap_url, timeout=10, verify=False)
                     if r.ok:
                         yield yield_event({"status": f"Parsing sitemap: {sitemap_url}"})
                         tree = ET.fromstring(r.content)
@@ -500,13 +636,15 @@ def scan_site():
                             if link and (follow_external or get_domain_name(link) == base_domain):
                                 all_links.add(link)
                                 yield yield_event({"link": link})
-                except Exception:
+                except Exception as e:
+                    print(f"Could not parse sitemap {sitemap_url}: {e}")
                     pass
         except Exception as e:
             print(f"Error during sitemap check: {e}")
 
         yield yield_event({"status": "Starting browser crawl..."})
-        driver = get_chrome_driver()
+        # Pass the base_domain to get_chrome_driver for cookie injection
+        driver = get_chrome_driver(domain_for_cookie=base_domain)
         if not driver:
             yield yield_event({"error": "Could not initialize web driver."})
             yield "event: end\ndata: Scan finished\n\n"
@@ -514,6 +652,7 @@ def scan_site():
         
         to_visit = {url}
         visited = set()
+        # Use a session for JS files, but it will fail if they are also protected
         session = requests.Session()
 
         try:
@@ -533,10 +672,35 @@ def scan_site():
 
                     try:
                         driver.get(current_url)
-                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
                         
-                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                        time.sleep(2)
+                        # --- NEW: Smarter wait condition ---
+                        # Wait for an element that is *not* part of the challenge page.
+                        # For thevespiary.org, this is id="app". We'll use a more generic
+                        # wait for any element with an ID, which is *usually* the main content.
+                        # Increased timeout to 20s for slow challenges.
+                        try:
+                            WebDriverWait(driver, 20).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "#app, #main, #root, .main, .app, .container"))
+                            )
+                            yield yield_event({"status": "Bot challenge likely passed. Scraping..."})
+                        except TimeoutException:
+                            yield yield_event({"status": "Timeout waiting for main content. Scraping whatever is present..."})
+                            # Proceed anyway, it might be a simple page
+                        # --- End smarter wait ---
+
+                        
+                        # --- Improved dynamic content scroll ---
+                        last_height = driver.execute_script("return document.body.scrollHeight")
+                        scroll_pause_time = 1.5 # Time to wait after each scroll
+                        
+                        for _ in range(5): # Max 5 scrolls to prevent infinite loops
+                            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                            time.sleep(scroll_pause_time) 
+                            new_height = driver.execute_script("return document.body.scrollHeight")
+                            if new_height == last_height:
+                                break 
+                            last_height = new_height
+                        # --- End of improved scroll ---
 
                         soup = BeautifulSoup(driver.page_source, 'html.parser')
                         
@@ -552,7 +716,8 @@ def scan_site():
                                     if full_url not in visited:
                                         to_visit.add(full_url)
                         
-                        js_links = find_links_in_js(session, current_url, base_domain, follow_external)
+                        # Pass the 'soup' object you already have
+                        js_links = find_links_in_js(session, soup, current_url, base_domain, follow_external)
                         for link in js_links:
                             if link not in all_links:
                                 all_links.add(link)
@@ -629,13 +794,27 @@ def archive_url():
             proxy_line = next(PROXY_CYCLE).strip()
             if not proxy_line:
                 continue
+            
             if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
-                proxy_line = 'http://' + proxy_line
+                proxy_line = 'socks5://' + proxy_line
+            
             yield yield_event({"status": f"Trying proxy ({i+1}/{num_proxies})..."})
             print(f"Attempting to use proxy: {proxy_line}")
+            
             try:
-                http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+                proxy_scheme = urlparse(proxy_line).scheme
+                
+                if proxy_scheme in ('socks4', 'socks5'):
+                    if SOCKSProxyManager is None:
+                        raise ImportError("SOCKSProxyManager not available. 'pysocks' might be missing.")
+                    http_manager = SOCKSProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+                elif proxy_scheme in ('http', 'https'):
+                    http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+                else:
+                    raise ValueError(f"Unsupported proxy scheme: {proxy_scheme}")
+
                 response = http_manager.request('GET', archive_api_url, timeout=20.0)
+
                 if response.status < 400:
                     print(f"Proxy {proxy_line} successful!")
                     yield yield_event({"success": "Successfully submitted to Internet Archive."})
@@ -651,7 +830,7 @@ def archive_url():
                 continue
             except Exception as e:
                 print(f"Proxy {proxy_line} encountered a general error: {e}. Trying next...")
-                yield yield_event({"status": "Proxy timeout. Trying next..."})
+                yield yield_event({"status": "Proxy error. Trying next..."})
                 continue
         final_error_message = "All available proxies failed to connect."
         print(final_error_message)
@@ -666,6 +845,9 @@ def check_diff():
     url = data.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
+    
+    # For diffs, we need to use Selenium to get live content if it's protected
+    driver = None
     try:
         full_url = normalize_url_for_requests(url)
         cdx_url = f"http://web.archive.org/cdx/search/cdx?url={full_url}&output=json&fl=timestamp&statuscode=200&limit=-1"
@@ -677,11 +859,10 @@ def check_diff():
         
         latest_timestamp = snapshots[-1][0]
         try:
-            # Format the timestamp for better readability
             date_obj = datetime.strptime(latest_timestamp, '%Y%m%d%H%M%S').replace(tzinfo=timezone.utc)
             formatted_date = date_obj.astimezone().strftime('%B %d, %Y at %I:%M %p %Z')
         except ValueError:
-            formatted_date = latest_timestamp # Fallback to raw timestamp
+            formatted_date = latest_timestamp
 
         archived_url = f"https://web.archive.org/web/{latest_timestamp}id_/{full_url}"
         archived_response = requests.get(archived_url, timeout=20)
@@ -689,10 +870,24 @@ def check_diff():
         archived_soup = BeautifulSoup(archived_response.text, 'html.parser')
         archived_text = archived_soup.get_text()
         
-        live_response = requests.get(full_url, timeout=20, verify=False)
-        live_response.raise_for_status()
-        live_soup = BeautifulSoup(live_response.text, 'html.parser')
+        # --- NEW: Use Selenium for live text ---
+        print("Diff check: using Selenium for live content.")
+        driver = get_chrome_driver(domain_for_cookie=get_domain_name(full_url))
+        if not driver:
+            raise Exception("Could not initialize WebDriver for diff check.")
+        
+        driver.get(full_url)
+        try:
+            # Wait for the main content to appear, similar to scan_site
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#app, #main, #root, .main, .app, .container"))
+            )
+        except TimeoutException:
+            print("Diff check: Timeout waiting for main content. Using whatever loaded.")
+            
+        live_soup = BeautifulSoup(driver.page_source, 'html.parser')
         live_text = live_soup.get_text()
+        # --- End Selenium use ---
         
         diff = difflib.HtmlDiff(wrapcolumn=80).make_table(
             archived_text.splitlines(),
@@ -709,6 +904,9 @@ def check_diff():
         return jsonify({"error": f"Network error during diff check: {e}"}), 500
     except Exception as e:
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+    finally:
+        if driver:
+            driver.quit()
 
 
 @app.route('/get-schedules', methods=['GET'])
@@ -732,9 +930,8 @@ def get_local_archives():
         for root, dirs, files in os.walk(LOCAL_ARCHIVES_DIR):
             for file in files:
                 if file.endswith('.html'):
-                    # Get the relative path from the archives dir
                     relative_path = os.path.relpath(os.path.join(root, file), LOCAL_ARCHIVES_DIR)
-                    archived_files.append(relative_path.replace("\\", "/")) # Ensure cross-platform paths
+                    archived_files.append(relative_path.replace("\\", "/")) 
         return jsonify(sorted(archived_files, reverse=True))
     except FileNotFoundError:
         return jsonify([])
@@ -773,8 +970,8 @@ def schedule_scan():
         if frequency == 'daily': trigger_args['days'] = 1
         elif frequency == 'weekly': trigger_args['weeks'] = 1
         elif frequency == 'bi-weekly': trigger_args['weeks'] = 2
-        elif frequency == 'monthly': trigger_args['weeks'] = 4 # Approx
-        elif frequency == 'every-other-month': trigger_args['weeks'] = 8 # Approx
+        elif frequency == 'monthly': trigger_args['weeks'] = 4 
+        elif frequency == 'every-other-month': trigger_args['weeks'] = 8 
 
         job = scheduler.add_job(
             run_scheduled_scan,
@@ -784,7 +981,6 @@ def schedule_scan():
             next_run_time=start_date
         )
         
-        # Save schedule to file for persistence
         schedules = []
         try:
             with open(SCHEDULES_FILE, 'r') as f:
@@ -813,7 +1009,6 @@ def delete_schedule():
 
     try:
         scheduler.remove_job(job_id)
-        # Update the schedules file
         schedules = []
         try:
             with open(SCHEDULES_FILE, 'r') as f:
@@ -822,7 +1017,7 @@ def delete_schedule():
             with open(SCHEDULES_FILE, 'w') as f:
                 json.dump(schedules, f, indent=4)
         except (FileNotFoundError, json.JSONDecodeError):
-            pass # File might already be empty or gone
+            pass 
         return jsonify({"message": "Schedule deleted successfully."})
     except Exception as e:
         return jsonify({"error": f"Failed to delete schedule: {e}"}), 500
@@ -842,18 +1037,37 @@ def save_local_copy():
         driver = None
         try:
             yield yield_event({"status": "Loading page in browser..."})
-            driver = get_chrome_driver()
+            driver = get_chrome_driver(domain_for_cookie=get_domain_name(url))
             if not driver:
                 yield yield_event({"error": "Could not initialize web driver."})
                 return
 
             driver.get(url)
-            time.sleep(5) # Wait for JS to render
+            
+            # --- Smarter wait + dynamic content scroll ---
+            try:
+                WebDriverWait(driver, 20).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "#app, #main, #root, .main, .app, .container"))
+                )
+                yield yield_event({"status": "Main content loaded. Scrolling..."})
+            except TimeoutException:
+                yield yield_event({"status": "Timeout waiting for main content. Scrolling..."})
+
+            last_height = driver.execute_script("return document.body.scrollHeight")
+            scroll_pause_time = 1.5 
+            
+            for _ in range(5): # Max 5 scrolls
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(scroll_pause_time) 
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if new_height == last_height:
+                    break 
+                last_height = new_height
+            # --- End of scroll ---
             
             page_source = driver.page_source
             soup = BeautifulSoup(page_source, 'html.parser')
 
-            # Helper to fetch assets and convert to Base64
             def fetch_and_embed(tag, attr):
                 try:
                     asset_url = tag.get(attr)
@@ -861,6 +1075,7 @@ def save_local_copy():
                         return
                     
                     full_asset_url = urljoin(url, asset_url)
+                    # Use selenium's session if possible? No, stick to requests
                     response = requests.get(full_asset_url, timeout=10, verify=False)
                     if response.status_code == 200:
                         mime_type, _ = mimetypes.guess_type(full_asset_url)
@@ -879,8 +1094,8 @@ def save_local_copy():
             yield yield_event({"status": "Embedding Images..."})
             for img in soup.find_all('img'):
                 fetch_and_embed(img, 'src')
-                if img.get('srcset'): # Handle responsive images
-                    del img['srcset'] # Simplification: remove srcset to force src
+                if img.get('srcset'):
+                    del img['srcset'] 
 
             yield yield_event({"status": "Embedding Scripts..."})
             for script in soup.find_all('script'):
@@ -889,13 +1104,11 @@ def save_local_copy():
             
             yield yield_event({"status": "Saving file..."})
             
-            # Create a safe filename
             domain = urlparse(url).hostname or 'unknown'
             path = urlparse(url).path.replace('/', '_') or 'index'
             filename = f"{domain}{path}.html"
-            filename = re.sub(r'[^\w\.-]', '_', filename) # Clean filename
+            filename = re.sub(r'[^\w\.-]', '_', filename) 
             
-            # Sanitize folder name
             sane_folder = secure_filename(folder_name)
             target_dir = os.path.join(LOCAL_ARCHIVES_DIR, sane_folder) if sane_folder else LOCAL_ARCHIVES_DIR
             
@@ -919,6 +1132,64 @@ def save_local_copy():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
+# --- Proxy Test Function ---
+def test_proxy(proxy_line):
+    """Tests a single proxy line against a neutral target."""
+    if not proxy_line:
+        return None
+    
+    if not re.match(r'^(http|https|socks4|socks5)://', proxy_line):
+        proxy_line = 'socks5://' + proxy_line
+    
+    headers = {'User-Agent': 'Ariadne Proxy Tester/1.0'}
+    test_url = "https://httpbin.org/ip" 
+    
+    try:
+        proxy_scheme = urlparse(proxy_line).scheme
+        
+        if proxy_scheme in ('socks4', 'socks5'):
+            if SOCKSProxyManager is None:
+                raise ImportError("SOCKSProxyManager not available.")
+            http_manager = SOCKSProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+        elif proxy_scheme in ('http', 'https'):
+            http_manager = urllib3.ProxyManager(proxy_line, headers=headers, cert_reqs='CERT_NONE', retries=False)
+        else:
+            raise ValueError(f"Unsupported scheme: {proxy_scheme}")
+
+        response = http_manager.request('GET', test_url, timeout=10.0)
+        
+        if response.status == 200:
+            try:
+                data = json.loads(response.data.decode('utf-8'))
+                ip = data.get('origin', 'Unknown IP')
+                return {"proxy": proxy_line, "status": "Working", "ip": ip}
+            except Exception:
+                return {"proxy": proxy_line, "status": "Working", "ip": "Response OK, IP unparsed"}
+        else:
+            return {"proxy": proxy_line, "status": f"Failed (Status: {response.status})", "ip": "N/A"}
+            
+    except Exception as e:
+        return {"proxy": proxy_line, "status": f"Failed ({type(e).__name__})", "ip": "N/A"}
+
+
+@app.route('/test-proxies', methods=['POST'])
+def test_proxies_endpoint():
+    data = request.get_json()
+    proxies = data.get('proxies', [])
+    if not proxies or not isinstance(proxies, list):
+        return jsonify({"error": "A list of proxies is required"}), 400
+    
+    results = []
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        future_to_proxy = {executor.submit(test_proxy, proxy): proxy for proxy in proxies if proxy.strip()}
+        for future in as_completed(future_to_proxy):
+            result = future.result()
+            if result:
+                results.append(result)
+                
+    return jsonify({"results": results})
+
+
 # --- Other Endpoints (get_ip, get_registrar, etc.) ---
 @app.route('/get-ip', methods=['POST'])
 def get_ip_address():
@@ -927,10 +1198,11 @@ def get_ip_address():
     if not domain:
         return jsonify({"error": "Domain is required"}), 400
     try:
-        answers = dns.resolver.resolve(domain, 'A')
+        answers = my_resolver.resolve(domain, 'A')
         ip_address = answers[0].to_text()
         return jsonify({"ip_address": ip_address})
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout):
+    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.exception.Timeout) as e:
+        print(f"Error resolving IP for {domain}: {e}")
         return jsonify({"ip_address": "Not found"})
     except Exception as e:
         print(f"Error resolving IP for {domain}: {e}")
@@ -957,24 +1229,49 @@ def get_settings():
             proxies_content = f.read()
     except FileNotFoundError:
         proxies_content = "# Add proxy addresses here, one per line (e.g., http://user:pass@host:port).\n"
+    
     return jsonify({
         "proxies": proxies_content, 
         "enabled": PROXIES_ENABLED,
-        "archive_folder": ARCHIVE_FOLDER
+        "archive_folder": ARCHIVE_FOLDER,
+        "cookie_domain": AUTH_COOKIE.get('domain', '') if AUTH_COOKIE else '',
+        "cookie_name": AUTH_COOKIE.get('name', '') if AUTH_COOKIE else '',
+        "cookie_value": AUTH_COOKIE.get('value', '') if AUTH_COOKIE else ''
     })
+
 @app.route('/update-settings', methods=['POST'])
 def update_settings():
-    global PROXIES_ENABLED, ARCHIVE_FOLDER
+    global PROXIES_ENABLED, ARCHIVE_FOLDER, AUTH_COOKIE
     data = request.get_json()
     proxies_content = data.get('proxies', '')
     proxies_enabled_state = data.get('enabled', True)
     archive_folder_name = data.get('archive_folder', '')
+    
+    # NEW: Get cookie data
+    cookie_domain = data.get('cookie_domain', '').strip()
+    cookie_name = data.get('cookie_name', '').strip()
+    cookie_value = data.get('cookie_value', '').strip()
+
     try:
         with open('proxies.txt', 'w') as f:
             f.write(proxies_content)
         load_proxies()
+        
         PROXIES_ENABLED = proxies_enabled_state
         ARCHIVE_FOLDER = archive_folder_name
+        
+        # NEW: Update global auth cookie
+        if cookie_domain and cookie_name and cookie_value:
+            AUTH_COOKIE = {
+                'name': cookie_name,
+                'value': cookie_value,
+                'domain': cookie_domain if cookie_domain.startswith('.') else f".{cookie_domain}"
+            }
+            print(f"Updated auth cookie for domain: {AUTH_COOKIE['domain']}")
+        else:
+            AUTH_COOKIE = None
+            print("Auth cookie cleared.")
+
         save_settings()
         return jsonify({"message": "Settings saved successfully."})
     except Exception as e:
@@ -993,7 +1290,15 @@ def analyze_headers_endpoint():
     }
     try:
         full_url = normalize_url_for_requests(url)
-        response = requests.get(full_url, timeout=10, allow_redirects=True, verify=False)
+        # Use a session with a browser-like user agent
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
+        response = session.get(full_url, timeout=10, allow_redirects=True, verify=False)
+        
+        # Handle cases where we get the challenge page
+        if "Checking if the site connection is secure" in response.text:
+            return jsonify({"error": "Could not analyze headers: Site is protected by an anti-bot service."}), 503
+
         for header in headers_to_check:
             if header in response.headers:
                 headers_to_check[header] = 'Present'
@@ -1010,7 +1315,14 @@ def detect_tech_endpoint():
     detected_tech = set()
     try:
         full_url = normalize_url_for_requests(url)
-        response = requests.get(full_url, timeout=10, allow_redirects=True, verify=False)
+        # Use a session with a browser-like user agent
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
+        response = session.get(full_url, timeout=10, allow_redirects=True, verify=False)
+        
+        if "Checking if the site connection is secure" in response.text:
+            return jsonify({"error": "Could not detect tech: Site is protected by an anti-bot service."}), 503
+
         content = response.text
         headers = response.headers
         soup = BeautifulSoup(content, 'html.parser')
@@ -1021,6 +1333,7 @@ def detect_tech_endpoint():
         if 'jquery' in content: detected_tech.add('jQuery')
         if 'bootstrap' in content: detected_tech.add('Bootstrap')
         if 'X-Powered-By' in headers and 'ASP.NET' in headers['X-Powered-By']: detected_tech.add('ASP.NET')
+        if 'cloudflare' in headers.get('Server', ''): detected_tech.add('Cloudflare')
         return jsonify({"technologies": list(detected_tech)})
     except requests.RequestException as e:
         print(f"Error fetching page for tech detection {url}: {e}")
@@ -1033,21 +1346,34 @@ def check_links_endpoint():
         return jsonify({"error": "A list of URLs is required"}), 400
     results = {}
     session = requests.Session()
+    # Use a browser-like user agent
+    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
+    
     def check_url(url):
         try:
-            response = session.head(url, timeout=5, allow_redirects=True, headers={'User-Agent': 'Ariadne Scanner/1.2'}, verify=False)
+            response = session.head(url, timeout=5, allow_redirects=True, verify=False)
             return url, response.status_code
         except requests.RequestException:
-            return url, "Error"
-    for url in urls:
-        _, status = check_url(url)
-        results[url] = status
+            try:
+                # Fallback to GET if HEAD fails
+                response = session.get(url, timeout=5, allow_redirects=True, verify=False)
+                return url, response.status_code
+            except requests.RequestException:
+                return url, "Error"
+                
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        future_to_url = {executor.submit(check_url, url): url for url in urls}
+        for future in as_completed(future_to_url):
+            url, status = future.result()
+            results[url] = status
+            
     return jsonify({"link_statuses": results})
 
 
 if __name__ == '__main__':
+    print("Starting Ariadne backend...") # Added a startup message
     os.makedirs(LOCAL_ARCHIVES_DIR, exist_ok=True)
-    load_settings()
+    load_settings() # Load settings first to get cookie info
     load_proxies()
     scheduler.start()
     load_schedules()

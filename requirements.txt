@@ -11,3 +11,5 @@ pysocks
 APScheduler
 concurrent-log-handler
 googlesearch-python
+ipaddress
+selenium-stealth

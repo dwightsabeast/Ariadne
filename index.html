@@ -205,19 +205,26 @@
 
     <div id="settings-modal" class="hidden">
         <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2">
-             <div class="flex justify-between items-center p-4 border-b border-gray-700">
+        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2 max-h-[80vh] flex flex-col">
+             <div class="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
                 <h3 class="text-xl font-bold">Settings</h3>
                 <button id="close-settings-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
             </div>
-            <div class="p-6 space-y-6">
+            <div class="p-6 space-y-6 overflow-y-auto">
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100 mb-2">Proxy Settings</h4>
                     <label for="proxy-textarea" class="block text-sm font-medium text-gray-300 mb-2">Enter proxies, one per line (e.g., http://user:pass@host:port)</label>
-                    <textarea id="proxy-textarea" rows="8" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
+                    <textarea id="proxy-textarea" rows="5" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
+                    
+                    <div id="proxy-test-results-container" class="mt-4 hidden">
+                        <h5 class="text-md font-semibold text-gray-200 mb-2">Proxy Test Results:</h5>
+                        <div id="proxy-test-results" class="max-h-32 overflow-y-auto p-3 bg-gray-900 rounded-md border border-gray-700 text-sm space-y-1">
+                        </div>
+                    </div>
+                    
                     <div class="flex items-center my-4">
                         <input type="checkbox" id="enable-proxies-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <label for="enable-proxies-checkbox" class="ml-2 text-sm text-gray-300">Enable Proxies for Archiving</label>
+                        <label for="enable-proxies-checkbox" class="ml-2 text-sm text-gray-300">Enable Proxies for Archiving</LabeL>
                     </div>
                 </div>
                 
@@ -227,8 +234,33 @@
                     <input type="text" id="archive-folder-input" placeholder="Leave blank to save in main archive" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-gray-200 border-gray-600">
                 </div>
 
-                <p id="settings-status-message" class="text-sm mt-2"></p>
-                <div class="mt-4 flex justify-end">
+                <!-- NEW: Auth Cookie Settings -->
+                <div class="border-t border-gray-700 pt-4">
+                     <h4 class="text-lg font-semibold text-gray-100 mb-2">Authentication Settings</h4>
+                     <p class="text-xs text-gray-400 mb-3">
+                        For scanning sites that require login. Find these in your browser's DevTools (Application > Cookies).
+                     </p>
+                     <div class="space-y-3">
+                        <div>
+                            <label for="cookie-domain-input" class="block text-sm font-medium text-gray-300 mb-1">Auth Domain (e.g., .example.com)</label>
+                            <input type="text" id="cookie-domain-input" placeholder=".example.com" class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                        </div>
+                        <div>
+                            <label for="cookie-name-input" class="block text-sm font-medium text-gray-300 mb-1">Cookie Name (e.g., sessionid)</label>
+                            <input type="text" id="cookie-name-input" placeholder="sessionid" class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                        </div>
+                        <div>
+                            <label for="cookie-value-input" class="block text-sm font-medium text-gray-300 mb-1">Cookie Value</label>
+                            <input type="text" id="cookie-value-input" placeholder="abc123..." class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
+                        </div>
+                     </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-700 mt-auto flex-shrink-0">
+                <p id="settings-status-message" class="text-sm mb-3 text-center"></p>
+                <div class="flex flex-col sm:flex-row justify-end gap-3">
+                    <button id="test-proxies-btn" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 transition">Test Proxies</button>
                     <button id="save-settings-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save Settings</button>
                 </div>
             </div>
@@ -242,52 +274,57 @@
                 <h3 class="text-xl font-bold">About Ariadne</h3>
                 <button id="close-about-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
             </div>
+            <!-- UPDATED ABOUT SECTION -->
             <div id="about-modal-body" class="p-6 max-h-[70vh] overflow-y-auto space-y-4">
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Main Scanning Features</h4>
-                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. It uses a three-stage process: first, it looks for a <code>sitemap.xml</code> file. If not found, it launches an automated browser to crawl the site by following hyperlinks, simulating user scrolling to find dynamically loaded content. Finally, it analyzes the site's JavaScript files to discover hidden paths.</p>
-                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains associated with the main domain using several advanced techniques. It aggregates results from passive sources like Google, Certificate Transparency logs, and ThreatCrowd, and then validates each result to ensure it is live. For deeper scans, it can also perform an active brute-force attack using a large wordlist to find unlisted subdomains.</p>
+                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. This scan uses a stealth-enabled browser to bypass anti-bot services, find sitemaps, and parse JavaScript files for hidden links. It automatically handles dynamic content and "infinite scroll" pages by intelligently scrolling until no new content is loaded.</p>
+                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains using passive sources (Google, Certificate Logs, ThreatCrowd) and active DNS enumeration (Zone Transfers, Brute-Force). All results are validated with a robust, custom DNS resolver to ensure they are live.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Scan Options</h4>
-                    <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to. Higher depths can significantly increase scan time.</p>
-                    <p class="text-sm mt-1"><strong>Follow External Links:</strong> When checked, this allows the 'Scan Site' crawler to follow hyperlinks to different websites, up to the specified depth.</p>
-                    <p class="text-sm mt-1"><strong>Enable Brute-Force:</strong> When finding subdomains, checking this box enables the active brute-force scan, which is more thorough but takes longer to complete.</p>
+                    <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to.</p>
+                    <p class="text-sm mt-1"><strong>Follow External Links:</strong> Allows the 'Scan Site' crawler to follow hyperlinks to different websites.</p>
+                    <p class="text-sm mt-1"><strong>Enable Brute-Force:</strong> Enables the active (and slower) brute-force scan when finding subdomains.</p>
                 </div>
                  <div>
                     <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
-                    <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select specific items using the checkboxes.</p>
-                    <p class="text-sm mt-1"><strong>Export/Archive Selected:</strong> Allows you to save the selected items to a CSV file or submit them to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a> for preservation. If no results are found during a scan, you can still archive the base URL.</p>
-                     <p class="text-sm mt-1"><strong>Individual Actions (Diff, Tech, Headers, Scan):</strong> Buttons next to each result allow you to perform actions on that specific item, such as initiating a new scan on a subdomain, running a detailed analysis, or checking for changes.</p>
+                    <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select items individually or use "Select All".</p>
+                    <p class="text-sm mt-1"><strong>Export Selected:</strong> Saves the selected items to a CSV file.</p>
+                    <p class="text-sm mt-1"><strong>Archive Selected:</strong> Submits the selected items to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a>. This uses proxies if they are enabled.</p>
+                    <p class="text-sm mt-1"><strong>Save All Local:</strong> Creates a complete, self-contained offline copy of the selected pages, embedding all CSS, images, and scripts. This also uses the stealth browser to capture the full page.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Change Detection</h4>
-                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This powerful feature compares the live version of a page against its most recent snapshot on the Internet Archive. It queries the archive for the latest successful capture, fetches both versions, and displays a side-by-side comparison highlighting any text that has been added or removed. If no changes are found, it will inform you of the date of the last successful archive. If changes are detected, you have the option to archive the new version directly.</p>
+                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This feature compares the live version of a page against its most recent snapshot on the Internet Archive. It uses the stealth-enabled browser (with your auth cookie, if set) to get the *true* live content, providing an accurate comparison. It then displays a side-by-side diff highlighting all changes.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Visual Maps</h4>
-                    <p class="text-sm mt-1"><strong>View Map:</strong> After a scan, this button generates an interactive visual sitemap or subdomain map. Nodes on the map are clickable and will open the corresponding URL in a new tab.</p>
-                    <p class="text-sm mt-1"><strong>Map Legend:</strong> Provides key information about the scanned host, including its IP address, domain provider, the number of items found, and the total scan time.</p>
+                    <p class="text-sm mt-1"><strong>View Map:</strong> Generates an interactive D3.js sitemap or subdomain map. Nodes are clickable and will open the corresponding URL in a new tab. The legend provides scan info like IP address, domain provider, and scan time.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Analysis Tools</h4>
-                    <p class="text-sm mt-1"><strong>Detect Tech:</strong> Analyzes a URL to identify the web technologies it is built with (e.g., WordPress, React).</p>
-                    <p class="text-sm mt-1"><strong>Analyze Headers:</strong> Inspects a URL's HTTP response to check for important security headers.</p>
-                    <p class="text-sm mt-1"><strong>Check All For Broken Links:</strong> Tests every link found during a site scan to see if it leads to a "404 Not Found" error.</p>
+                    <p class="text-sm mt-1"><strong>Detect Tech:</strong> Identifies web technologies (e.g., WordPress, React) used on the main URL.</p>
+                    <p class="text-sm mt-1"><strong>Analyze Headers:</strong> Inspects the main URL's HTTP response for important security headers.</p>
+                    <p class="text-sm mt-1"><strong>Check All For Broken Links:</strong> Concurrently tests every link found during a site scan and categorizes them by status code (e.g., 404) or network errors.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Automated Scanning</h4>
-                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> This feature transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically perform a subdomain search, run a diff check on each result, and archive any subdomains that have changed. Schedules can be set to run daily, weekly, bi-weekly, monthly, or every other month, and can be managed from the Scheduler modal.</p>
+                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> Transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically find subdomains, run a diff check on each one, and archive any that have changed. Schedules are persistent and can be set to run daily, weekly, etc.</p>
                 </div>
                 <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Configuration</h4>
-                    <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Allows you to provide a list of proxy servers. When archiving pages, the tool will rotate through this list to find a working proxy. You can also enable or disable the use of proxies entirely with a toggle switch.</p>
+                    <h4 class="text-lg font-semibold text-gray-100">Configuration (Settings)</h4>
+                    <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Add a list of proxies to be used for archiving. The "Test Proxies" button will validate your list in parallel and report which ones are working.</p>
+                    <p class="text-sm mt-1"><strong>Archive Settings:</strong> Specify a subfolder name to organize your locally saved HTML files.</p>
+                    <p class="text-sm mt-1"><strong>Authentication Settings:</strong> Inject a session cookie (Domain, Name, Value) into the browser. This allows the "Scan Site", "Save Local Copy", and "Diff" features to work on sites that require you to be logged in.</p>
                 </div>
                 <div>
                     <h4 class="text-lg font-semibold text-gray-100">Convenience Features</h4>
-                    <p class="text-sm mt-1"><strong>Load Last Scan Results:</strong> The tool automatically saves the results of your most recent subdomain scan. Use the history button (clock icon) in the top-right corner to instantly reload these results without running the scan again.</p>
+                    <p class="text-sm mt-1"><strong>Load Last Scan Results:</strong> Instantly reload the results of your most recent subdomain scan without running it again.</p>
+                    <p class="text-sm mt-1"><strong>View Local Archives:</strong> Opens a modal that lists all your locally saved HTML files, allowing you to open them directly.</p>
                 </div>
             </div>
+            <!-- END UPDATED ABOUT SECTION -->
         </div>
     </div>
     
@@ -322,7 +359,7 @@
                         <select id="schedule-frequency" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
                             <option value="daily">Daily</option>
                             <option value="weekly">Weekly</option>
-                            <option value="bi-weekly">Bi-Weekly</option>
+                            <option value-="bi-weekly">Bi-Weekly</option>
                             <option value="monthly">Monthly</option>
                             <option value="every-other-month">Every Other Month</option>
                         </select>
@@ -411,6 +448,15 @@
         const archiveFolderInput = document.getElementById('archive-folder-input');
         const settingsStatusMessage = document.getElementById('settings-status-message');
         const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const testProxiesBtn = document.getElementById('test-proxies-btn');
+        const proxyTestResultsContainer = document.getElementById('proxy-test-results-container');
+        const proxyTestResults = document.getElementById('proxy-test-results');
+        
+        // NEW: Auth Cookie Elements
+        const cookieDomainInput = document.getElementById('cookie-domain-input');
+        const cookieNameInput = document.getElementById('cookie-name-input');
+        const cookieValueInput = document.getElementById('cookie-value-input');
+        
         const schedulerModal = document.getElementById('scheduler-modal');
         const schedulerBtn = document.getElementById('scheduler-btn');
         const closeSchedulerModalBtn = document.getElementById('close-scheduler-modal-btn');
@@ -426,6 +472,8 @@
         const closeLocalArchiveModalBtn = document.getElementById('close-local-archive-modal-btn');
         const localArchivesList = document.getElementById('local-archives-list');
         
+        let originalResultsSummaryText = '';
+
         // Make functions globally available for onclick attributes
         window.runDiffCheck = async function(url, index) {
             let statusSpan = null;
@@ -518,7 +566,6 @@
                         statusSpan.className = `text-sm font-medium ${colorClass} flex-shrink-0 ml-2`;
                         statusSpan.title = title;
                     } else {
-                        // Fallback for base URL save
                         resultsSummary.textContent = text;
                         resultsSummary.className = `text-sm mb-4 ${colorClass}`;
                     }
@@ -655,7 +702,7 @@
             saveAllLocalBtn.classList.toggle('hidden', !show);
             sitemapBtn.classList.toggle('hidden', !show);
             analysisContainer.classList.toggle('hidden', !show);
-            selectAllContainer.classList.toggle('hidden', !hasResults); // Only show select all if there are results
+            selectAllContainer.classList.toggle('hidden', !hasResults); 
             updateActionButtonsState();
         }
 
@@ -690,7 +737,8 @@
             resultsContainer.classList.remove('hidden');
             resultsTitle.textContent = title;
             resultsList.innerHTML = ''; 
-            resultsSummary.textContent = `${summaryPrefix} ${items.length} unique items.`;
+            originalResultsSummaryText = `${summaryPrefix} ${items.length} unique items.`;
+            resultsSummary.textContent = originalResultsSummaryText;
             currentResults = items;
 
             showActionButtons(true);
@@ -710,9 +758,20 @@
             try {
                 let fullUrl = url.trim();
                 if (!/^[a-zA-Z]+:\/\//.test(fullUrl)) fullUrl = 'http://' + fullUrl;
-                return new URL(fullUrl).hostname.replace(/^www\./, '');
+                const hostname = new URL(fullUrl).hostname.replace(/^www\./, '');
+                
+                // Handle domain parts like .co.uk
+                const parts = hostname.split('.');
+                if (parts.length > 2 && parts[parts.length - 2].length <= 3 && parts[parts.length - 1].length <= 3) {
+                     return parts.slice(-3).join('.');
+                }
+                return parts.slice(-2).join('.');
             } catch (error) {
-                return url.trim().replace(/^www\./, '').split('/')[0];
+                const parts = url.trim().replace(/^www\./, '').split('/')[0].split('.');
+                 if (parts.length > 2 && parts[parts.length - 2].length <= 3 && parts[parts.length - 1].length <= 3) {
+                     return parts.slice(-3).join('.');
+                }
+                return parts.slice(-2).join('.');
             }
         }
 
@@ -723,10 +782,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ domain }),
                 });
-                if (!response.ok) return 'Error';
+                if (!response.ok) {
+                    const errData = await response.json();
+                    console.error("IP fetch error:", errData.error);
+                    return 'Error';
+                }
                 const data = await response.json();
                 return data.ip_address || 'Not found';
-            } catch (err) { return 'N/A'; }
+            } catch (err) { 
+                console.error("IP fetch exception:", err);
+                return 'N/A'; 
+            }
         }
 
         async function fetchRegistrar(domain) {
@@ -736,10 +802,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ domain }),
                 });
-                if (!response.ok) return 'Error';
+                if (!response.ok) {
+                     const errData = await response.json();
+                     console.error("Registrar fetch error:", errData.error);
+                     return 'Error';
+                }
                 const data = await response.json();
                 return data.registrar || 'Not found';
-            } catch (err) { return 'N/A'; }
+            } catch (err) { 
+                console.error("Registrar fetch exception:", err);
+                return 'N/A'; 
+            }
         }
         
         function performStreamingScan() {
@@ -754,6 +827,7 @@
             resultsContainer.classList.remove('hidden');
             resultsTitle.textContent = 'Scan in Progress...';
             resultsSummary.textContent = 'Waiting for results...';
+            originalResultsSummaryText = 'Waiting for results...';
             resultsList.innerHTML = '';
             currentResults = [];
             scanStartTime = Date.now();
@@ -770,11 +844,13 @@
                     setUILoading(false);
                 } else if (data.status) {
                      resultsSummary.textContent = data.status;
+                     originalResultsSummaryText = data.status;
                 } else if (data.link) {
                     if (!currentResults.includes(data.link)) {
                         currentResults.push(data.link);
                         addResultItem(data.link, currentResults.length - 1);
                         resultsSummary.textContent = `Found ${currentResults.length} unique items...`;
+                        originalResultsSummaryText = `Found ${currentResults.length} unique items...`;
                     }
                 }
             };
@@ -784,7 +860,13 @@
                 setUILoading(false);
                 const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
                 resultsTitle.textContent = "Scan Complete";
-                resultsSummary.textContent = `Scan finished in ${scanDuration}s. Found ${currentResults.length} unique items.`;
+                
+                if(currentResults.length === 0) {
+                    originalResultsSummaryText = `Scan finished in ${scanDuration}s. No items found. (Site may be protected or empty).`;
+                } else {
+                    originalResultsSummaryText = `Scan finished in ${scanDuration}s. Found ${currentResults.length} unique items.`;
+                }
+                resultsSummary.textContent = originalResultsSummaryText;
                 
                 const hostname = getDomainName(urlInput.value);
                 const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
@@ -811,12 +893,13 @@
             setUILoading(true);
             const scanStartTime = Date.now();
             const bruteForce = bruteForceCheckbox.checked;
+            const searchDomain = getDomainName(url);
             
             try {
                 const response = await fetch(`${API_BASE_URL}/find-subdomains`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain: getDomainName(url), brute_force: bruteForce }),
+                    body: JSON.stringify({ domain: searchDomain, brute_force: bruteForce }),
                 });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || `HTTP error! status: ${response.status}`);
@@ -825,9 +908,8 @@
                 errorMessage.textContent = `Error: ${err.message}`;
             } finally {
                 const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
-                const hostname = getDomainName(urlInput.value);
-                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
-                scanSummaryData = { hostname, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
+                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(searchDomain), fetchRegistrar(searchDomain) ]);
+                scanSummaryData = { hostname: searchDomain, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
                 setUILoading(false);
             }
         }
@@ -898,7 +980,6 @@
             }
 
             const initialButtonText = archiveAllBtn.textContent;
-            const initialSummaryText = resultsSummary.textContent;
             archiveAllBtn.disabled = true;
             archiveAllBtn.textContent = 'Archiving...';
 
@@ -910,7 +991,7 @@
             }
             
             archiveAllBtn.textContent = initialButtonText;
-            resultsSummary.textContent = initialSummaryText;
+            resultsSummary.textContent = originalResultsSummaryText;
             updateActionButtonsState();
         }
 
@@ -931,13 +1012,12 @@
                     return { link: fullUrl, index: originalIndex };
                 });
             } else if (currentResults.length === 0 && urlInput.value) {
-                itemsToSave.push({ link: urlInput.value, index: -1 }); // index -1 for base URL
+                itemsToSave.push({ link: urlInput.value, index: -1 }); 
             } else {
                 return;
             }
 
             const initialButtonText = saveAllLocalBtn.textContent;
-            const initialSummaryText = resultsSummary.textContent;
             saveAllLocalBtn.disabled = true;
             saveAllLocalBtn.textContent = 'Saving...';
 
@@ -945,11 +1025,11 @@
                 const item = itemsToSave[i];
                 resultsSummary.textContent = `Saving ${i + 1} of ${itemsToSave.length}...`;
                 await window.saveLocalCopy(item.link, item.index);
-                if (i < itemsToSave.length - 1) await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between saves
+                if (i < itemsToSave.length - 1) await new Promise(resolve => setTimeout(resolve, 500)); 
             }
             
             saveAllLocalBtn.textContent = initialButtonText;
-            resultsSummary.textContent = initialSummaryText;
+            resultsSummary.textContent = originalResultsSummaryText;
             updateActionButtonsState();
         }
 
@@ -1041,8 +1121,18 @@
                 } else if (endpoint === '/analyze-headers') {
                     html = `<dl class="space-y-2">${Object.entries(data.headers).map(([header, status]) => `<div class="flex justify-between"><dt class="font-medium">${header}:</dt><dd class="${status === 'Present' ? 'text-green-400' : 'text-red-400'}">${status}</dd></div>`).join('')}</dl>`;
                 } else if (endpoint === '/check-links') {
-                    const brokenLinks = Object.entries(data.link_statuses).filter(([_, status]) => status !== 200);
-                    html = brokenLinks.length > 0 ? `<ul class="list-disc list-inside space-y-2">${brokenLinks.map(([link, status]) => `<li><span class="font-medium">${status === 'Error' ? 'Network Error' : `Status ${status}`}:</span> <a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`).join('')}</ul>` : '<p>No broken links found!</p>';
+                    const brokenLinks = Object.entries(data.link_statuses).filter(([_, status]) => status !== 200 && status !== 'Error');
+                    const errorLinks = Object.entries(data.link_statuses).filter(([_, status]) => status === 'Error');
+                    html = '';
+                    if(brokenLinks.length > 0) {
+                        html += `<h4 class="font-semibold mb-2">Broken Links (404, etc.):</h4><ul class="list-disc list-inside space-y-2 mb-4">${brokenLinks.map(([link, status]) => `<li><span class="font-medium">Status ${status}:</span> <a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`).join('')}</ul>`;
+                    }
+                     if(errorLinks.length > 0) {
+                        html += `<h4 class="font-semibold mb-2">Network/SSL Errors:</h4><ul class="list-disc list-inside space-y-2">${errorLinks.map(([link, status]) => `<li><a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`).join('')}</ul>`;
+                    }
+                    if(html === '') {
+                        html = '<p>No broken links found!</p>';
+                    }
                 }
                 analysisModalBody.innerHTML = html;
             } catch (err) {
@@ -1064,10 +1154,10 @@
             let csvContent = "data:text/csv;charset=utf-8,";
             if (currentScanType === 'subdomain') {
                 csvContent += "Subdomain,Record Type\r\n";
-                selectedItems.forEach(item => { csvContent += `${item.name},${item.type}\r\\n`; });
+                selectedItems.forEach(item => { csvContent += `${item.name},${item.type}\r\n`; });
             } else {
                 csvContent += "Found Sites\r\n";
-                selectedItems.forEach(link => { csvContent += `${link}\r\\n`; });
+                selectedItems.forEach(link => { csvContent += `${link}\r\n`; });
             }
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
@@ -1111,6 +1201,8 @@
         settingsBtn.addEventListener('click', async () => {
             settingsModal.classList.remove('hidden');
             settingsStatusMessage.textContent = '';
+            proxyTestResultsContainer.classList.add('hidden');
+            proxyTestResults.innerHTML = '';
             try {
                 const response = await fetch(`${API_BASE_URL}/get-settings`);
                 const data = await response.json();
@@ -1118,7 +1210,11 @@
                     proxyTextarea.value = data.proxies;
                     enableProxiesCheckbox.checked = data.enabled;
                     archiveFolderInput.value = data.archive_folder;
-                    currentArchiveFolder = data.archive_folder; // Store current folder
+                    currentArchiveFolder = data.archive_folder; 
+                    // NEW: Populate cookie fields
+                    cookieDomainInput.value = data.cookie_domain || '';
+                    cookieNameInput.value = data.cookie_name || '';
+                    cookieValueInput.value = data.cookie_value || '';
                 } else {
                     throw new Error(data.error || 'Failed to load settings');
                 }
@@ -1128,21 +1224,87 @@
             }
         });
         closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+        
+        testProxiesBtn.addEventListener('click', async () => {
+            const proxies = proxyTextarea.value.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+            if (proxies.length === 0) {
+                proxyTestResultsContainer.classList.remove('hidden');
+                proxyTestResults.innerHTML = '<p class="text-yellow-400">Please enter at least one proxy to test.</p>';
+                return;
+            }
+
+            proxyTestResultsContainer.classList.remove('hidden');
+            proxyTestResults.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+            settingsStatusMessage.textContent = `Testing ${proxies.length} proxies...`;
+            settingsStatusMessage.className = 'text-sm mt-2 text-yellow-500';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/test-proxies`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proxies }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to run test');
+
+                proxyTestResults.innerHTML = '';
+                let workingCount = 0;
+                
+                if (data.results && data.results.length > 0) {
+                     data.results.forEach(res => {
+                        const p = document.createElement('p');
+                        p.className = 'font-mono';
+                        if (res.status === 'Working') {
+                            workingCount++;
+                            p.className += ' text-green-400';
+                            p.textContent = `[SUCCESS] ${res.proxy} (IP: ${res.ip})`;
+                        } else {
+                            p.className += ' text-red-400';
+                            p.textContent = `[FAILED]  ${res.proxy} (${res.status})`;
+                        }
+                        proxyTestResults.appendChild(p);
+                    });
+                } else {
+                     proxyTestResults.innerHTML = '<p class="text-gray-400">No results returned from backend.</p>';
+                }
+               
+                settingsStatusMessage.textContent = `Test complete: ${workingCount} of ${proxies.length} proxies are working.`;
+                settingsStatusMessage.className = 'text-sm mt-2 text-green-500';
+
+            } catch (e) {
+                settingsStatusMessage.textContent = `Error: ${e.message}`;
+                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
+                proxyTestResults.innerHTML = `<p class="text-red-500">Error during test: ${e.message}</p>`;
+            }
+        });
+
         saveSettingsBtn.addEventListener('click', async () => {
             const proxies = proxyTextarea.value;
             const enabled = enableProxiesCheckbox.checked;
             const archive_folder = archiveFolderInput.value;
+            // NEW: Get cookie data
+            const cookie_domain = cookieDomainInput.value;
+            const cookie_name = cookieNameInput.value;
+            const cookie_value = cookieValueInput.value;
+            
             try {
                 const response = await fetch(`${API_BASE_URL}/update-settings`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ proxies, enabled, archive_folder }),
+                    body: JSON.stringify({ 
+                        proxies, 
+                        enabled, 
+                        archive_folder,
+                        cookie_domain,
+                        cookie_name,
+                        cookie_value 
+                    }),
                 });
                 const data = await response.json();
                 if (response.ok) {
                     settingsStatusMessage.textContent = data.message;
                     settingsStatusMessage.className = 'text-sm mt-2 text-green-500';
-                    currentArchiveFolder = archive_folder; // Update current folder
+                    currentArchiveFolder = archive_folder; 
                 } else {
                     throw new Error(data.error || 'Failed to save');
                 }
@@ -1168,7 +1330,7 @@
                 if (data.domain && data.subdomains) {
                     currentScanType = 'subdomain';
                     displayStaticResults(`Saved Results for ${data.domain}`, data.subdomains, "Loaded");
-                    urlInput.value = data.domain; // Also populate the input box
+                    urlInput.value = data.domain; 
                 } else {
                     errorMessage.textContent = 'No previous results found to load.';
                     setTimeout(() => errorMessage.textContent = '', 3000);
@@ -1231,7 +1393,7 @@
                 if (response.ok) {
                     scheduleStatusMessage.textContent = data.message;
                     scheduleStatusMessage.className = 'text-sm mt-3 text-green-500';
-                    loadSchedules(); // Refresh the list
+                    loadSchedules(); 
                 } else {
                     throw new Error(data.error || 'Failed to save schedule');
                 }
