@@ -1,8 +1,14 @@
 {
-    "proxies_enabled": false,
-    "archive_folder": "",
-    "auth_domain": "https://www.thevespiary.org",
-    "auth_cookie_name": "PHPSESSID",
-    "auth_cookie_value": "b4e04d3b60a633052bc3be3a66927fe4",
-    "dns_timeout": 10.0
+  "max_depth": 3,
+  "max_threads": 10,
+  "request_timeout": 15,
+  "delay_between_requests": 0.2,
+  "follow_external": false,
+  "user_agent": "Ariadne/1.0 (Web Scanner)",
+  "respect_robots": true,
+  "proxy_enabled": false,
+  "proxy_rotate": false,
+  "subdomain_threads": 20,
+  "subdomain_timeout": 5,
+  "archive_org_enabled": true
 }

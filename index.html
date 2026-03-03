@@ -1,1430 +1,479 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ariadne</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #d1d5db;
-        }
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            border-left-color: #3b82f6;
-            animation: spin 1s ease infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .result-item:hover {
-            background-color: #374151;
-        }
-        .hidden { display: none; }
-        /* Modal Styles */
-        .modal-backdrop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            z-index: 40;
-        }
-        .modal-content {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 50;
-        }
-        /* D3 Sitemap Styles */
-        .sitemap-container .link {
-            fill: none;
-            stroke: #555;
-            stroke-width: 1.5px;
-        }
-        .sitemap-container .node circle {
-            fill: #1f2937;
-            stroke: #3b82f6;
-            stroke-width: 2px;
-        }
-        .sitemap-container .node text {
-            font-size: 12px;
-            fill: #d1d5db;
-        }
-        .sitemap-container .node {
-            cursor: pointer;
-        }
-        /* Diff Viewer Styles */
-        #diff-output table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        #diff-output th {
-            background-color: #374151;
-            padding: 8px;
-            text-align: left;
-        }
-        #diff-output td {
-            padding: 8px;
-            border-top: 1px solid #4b5563;
-            font-family: monospace;
-            white-space: pre-wrap;
-        }
-        #diff-output .diff_add { background-color: #166534; }
-        #diff-output .diff_sub { background-color: #991b1b; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ariadne — Web Scanner & Archiver</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg0:#0a0b0f;--bg1:#111318;--bg2:#181b22;--bg3:#14161c;--bgH:#1c1f28;--bdr:#252830;--bdrA:#3a3e4a;--t1:#e8e9ed;--t2:#8f929e;--t3:#5c5f6e;--acc:#c9a44c;--accD:rgba(201,164,76,.15);--accG:rgba(201,164,76,.3);--grn:#4ade80;--grnD:rgba(74,222,128,.15);--red:#f87171;--redD:rgba(248,113,113,.15);--blu:#60a5fa;--bluD:rgba(96,165,250,.15);--org:#fb923c;--orgD:rgba(251,146,60,.15);--r:8px;--rl:12px;--f:'DM Sans',-apple-system,sans-serif;--m:'JetBrains Mono','Fira Code',monospace;--sh:0 2px 8px rgba(0,0,0,.3)}
+html{font-size:14px}body{font-family:var(--f);background:var(--bg0);color:var(--t1);min-height:100vh;overflow-x:hidden}
+.app{display:grid;grid-template-columns:56px 1fr;min-height:100vh}
+.sidebar{background:var(--bg1);border-right:1px solid var(--bdr);display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:4px;z-index:100}
+.sidebar-logo{width:32px;height:32px;margin-bottom:16px;display:flex;align-items:center;justify-content:center}
+.sidebar-logo svg{width:28px;height:28px}
+.nav-btn{width:40px;height:40px;border:none;background:0 0;color:var(--t3);cursor:pointer;border-radius:var(--r);display:flex;align-items:center;justify-content:center;transition:all .2s;position:relative}
+.nav-btn:hover{color:var(--t2);background:var(--bgH)}.nav-btn.active{color:var(--acc);background:var(--accD)}
+.nav-btn.active::before{content:'';position:absolute;left:-8px;width:3px;height:20px;background:var(--acc);border-radius:0 3px 3px 0}
+.nav-btn svg{width:20px;height:20px}.sidebar-spacer{flex:1}
+.main{overflow-y:auto;height:100vh}
+.page{display:none;padding:32px 40px;max-width:1200px;animation:fadeIn .25s ease}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.page-header{margin-bottom:28px}.page-title{font-size:1.6rem;font-weight:600;letter-spacing:-.02em}
+.page-subtitle{font-size:.92rem;color:var(--t2);margin-top:4px}
+.card{background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--rl);padding:20px;margin-bottom:16px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.card-title{font-size:.95rem;font-weight:600;display:flex;align-items:center;gap:8px}
+.card-title svg{width:16px;height:16px;color:var(--t3)}
+.input-group{display:flex;gap:8px;align-items:stretch}
+input[type="text"],input[type="number"],select{background:var(--bg2);border:1px solid var(--bdr);color:var(--t1);padding:10px 14px;border-radius:var(--r);font-family:var(--f);font-size:.9rem;outline:0;transition:border-color .2s}
+input[type="text"]:focus,input[type="number"]:focus{border-color:var(--acc)}
+input[type="text"]::placeholder{color:var(--t3)}
+.url-input{flex:1;font-family:var(--m);font-size:.85rem}
+.input-row{display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.input-label{font-size:.82rem;color:var(--t2);min-width:fit-content}
+.compact-input{width:70px;text-align:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border:1px solid transparent;border-radius:var(--r);font-family:var(--f);font-size:.85rem;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--acc);color:#0a0b0f;border-color:var(--acc)}
+.btn-primary:hover{background:#d4b05a;box-shadow:0 0 20px var(--accG)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+.btn-secondary{background:var(--bg2);color:var(--t2);border-color:var(--bdr)}
+.btn-secondary:hover{color:var(--t1);border-color:var(--bdrA)}
+.btn-danger{background:var(--redD);color:var(--red);border-color:transparent}
+.btn-danger:hover{background:rgba(248,113,113,.25)}
+.btn-sm{padding:6px 12px;font-size:.8rem}
+.toggle-wrap{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.toggle{width:36px;height:20px;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;position:relative;transition:all .2s}
+.toggle::after{content:'';width:14px;height:14px;background:var(--t3);border-radius:50%;position:absolute;top:2px;left:2px;transition:all .2s}
+.toggle.on{background:var(--accD);border-color:var(--acc)}.toggle.on::after{background:var(--acc);left:18px}
+.toggle-label{font-size:.82rem;color:var(--t2)}
+.progress-bar{height:4px;background:var(--bg2);border-radius:2px;overflow:hidden;margin:12px 0}
+.progress-fill{height:100%;background:var(--acc);border-radius:2px;transition:width .4s ease;width:0}
+.status-text{font-size:.82rem;color:var(--t2);font-family:var(--m)}
+.status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:500}
+.badge-idle{background:var(--bg2);color:var(--t3)}.badge-running{background:var(--accD);color:var(--acc)}
+.badge-complete{background:var(--grnD);color:var(--grn)}.badge-error{background:var(--redD);color:var(--red)}
+.pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.results-table{width:100%;border-collapse:collapse;font-size:.83rem}
+.results-table th{text-align:left;padding:10px 12px;color:var(--t3);font-weight:500;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--bdr);position:sticky;top:0;background:var(--bg3)}
+.results-table td{padding:8px 12px;border-bottom:1px solid var(--bdr);color:var(--t2);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.results-table tr:hover td{background:var(--bgH)}
+.results-table .url-cell{font-family:var(--m);font-size:.8rem;color:var(--blu)}
+.results-table .url-cell a{color:inherit;text-decoration:none}.results-table .url-cell a:hover{text-decoration:underline}
+.status-pill{display:inline-block;padding:2px 8px;border-radius:4px;font-family:var(--m);font-size:.78rem;font-weight:500}
+.status-2xx{background:var(--grnD);color:var(--grn)}.status-3xx{background:var(--bluD);color:var(--blu)}
+.status-4xx{background:var(--orgD);color:var(--org)}.status-5xx{background:var(--redD);color:var(--red)}
+.status-err{background:var(--redD);color:var(--red)}
+.results-scroll{max-height:500px;overflow-y:auto;border:1px solid var(--bdr);border-radius:var(--r)}
+.results-scroll::-webkit-scrollbar{width:6px}.results-scroll::-webkit-scrollbar-track{background:0 0}
+.results-scroll::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);padding:14px 16px}
+.stat-value{font-size:1.5rem;font-weight:700;font-family:var(--m);letter-spacing:-.02em}
+.stat-label{font-size:.78rem;color:var(--t3);margin-top:2px}
+.stat-accent{color:var(--acc)}.stat-green{color:var(--grn)}.stat-red{color:var(--red)}.stat-blue{color:var(--blu)}
+.header-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.header-item{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-radius:var(--r);font-size:.82rem}
+.header-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.header-dot.present{background:var(--grn)}.header-dot.missing{background:var(--red);opacity:.6}
+.diff-result{padding:16px;border-radius:var(--r);margin-top:12px}
+.diff-changed{background:var(--orgD);border:1px solid rgba(251,146,60,.2)}
+.diff-same{background:var(--grnD);border:1px solid rgba(74,222,128,.2)}
+.diff-none{background:var(--bg2);border:1px solid var(--bdr)}
+.diff-lines{margin-top:12px;padding:10px;background:var(--bg0);border-radius:var(--r);font-family:var(--m);font-size:.8rem;max-height:200px;overflow-y:auto;line-height:1.6}
+.diff-added{color:var(--grn)}.diff-added::before{content:'+ '}
+.diff-removed{color:var(--red)}.diff-removed::before{content:'- '}
+.empty-state{text-align:center;padding:48px 20px;color:var(--t3)}
+.empty-state svg{width:48px;height:48px;margin-bottom:12px;opacity:.3}
+.empty-state p{font-size:.9rem}
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 18px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);font-size:.85rem;color:var(--t1);box-shadow:var(--sh);animation:slideIn .3s ease;max-width:360px}
+.toast-success{border-left:3px solid var(--grn)}.toast-error{border-left:3px solid var(--red)}.toast-info{border-left:3px solid var(--blu)}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.spinner{width:16px;height:16px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tabs{display:flex;gap:2px;background:var(--bg2);padding:3px;border-radius:var(--r);margin-bottom:16px;width:fit-content}
+.tab-btn{padding:7px 16px;border:none;background:0 0;color:var(--t3);font-family:var(--f);font-size:.82rem;font-weight:500;cursor:pointer;border-radius:6px;transition:all .2s}
+.tab-btn:hover{color:var(--t2)}.tab-btn.active{background:var(--bg3);color:var(--t1);box-shadow:var(--sh)}
+.tab-content{display:none}.tab-content.active{display:block}
+.action-bar{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:768px){.page{padding:20px 16px}.input-group{flex-direction:column}.stats-row{grid-template-columns:repeat(2,1fr)}}
+.intel-section{margin-bottom:16px}
+.intel-section .card-title{font-size:.88rem}
+.intel-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--s1);font-size:.82rem}
+.intel-item:last-child{border:none}
+.intel-key{color:var(--t3);min-width:120px}
+.intel-val{color:var(--t1);text-align:right;word-break:break-all}
+.intel-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:500;margin:2px}
+.intel-tag-green{background:rgba(52,211,153,.15);color:var(--grn)}
+.intel-tag-blue{background:rgba(96,165,250,.15);color:var(--blu)}
+.intel-tag-gold{background:rgba(201,164,76,.15);color:var(--acc)}
+.intel-tag-red{background:rgba(248,113,113,.15);color:var(--red)}
+.corr-card{padding:12px;background:var(--s0);border-radius:var(--r);border-left:3px solid var(--acc);margin-bottom:8px}
+.corr-strength{display:inline-block;padding:2px 6px;border-radius:4px;font-size:.72rem;font-weight:600}
+.strength-high{background:rgba(248,113,113,.2);color:#f87171}
+.strength-med{background:rgba(251,191,36,.2);color:#fbbf24}
+.strength-low{background:rgba(96,165,250,.2);color:#60a5fa}
+</style>
 </head>
-<body class="p-4 md:p-8">
-
-    <div id="app-container" class="max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-6">
-            <div class="w-28"></div> <!-- Spacer -->
-            <div class="text-center flex-grow">
-                <h1 class="text-3xl font-bold text-gray-100">Ariadne</h1>
-                <p class="text-gray-400 mt-1">A comprehensive tool for site and subdomain discovery.</p>
-            </div>
-            <div class="flex items-center space-x-2 w-auto justify-end">
-                 <button id="archives-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="View Local Archives">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                 </button>
-                 <button id="history-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Load Last Scan Results">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                 </button>
-                <button id="scheduler-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Scheduler">
-                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                </button>
-                <button id="about-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="About this Tool">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </button>
-                <button id="settings-btn" class="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition" title="Settings">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8m-4-4v2m0 16v-2m0-8v4m-4-2h8m-8 6h8m-8-12h8" /></svg>
-                </button>
-            </div>
-        </div>
-
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <div class="flex flex-col sm:flex-row gap-4 items-center">
-                <input type="text" id="url-input" placeholder="Enter a URL or domain (e.g., https://example.com)" class="flex-grow w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-gray-200 border-gray-600">
-                <div class="flex items-center gap-2">
-                    <label for="depth-input" class="text-sm font-medium">Depth:</label>
-                    <span class="cursor-help text-gray-400 font-bold" title="Scan depth determines how many 'clicks' deep the scanner will go.">[?]</span>
-                    <input type="number" id="depth-input" value="1" min="1" max="5" class="w-20 px-3 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                </div>
-            </div>
-            <div class="flex items-center mt-3">
-                <input type="checkbox" id="follow-external-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                <label for="follow-external-checkbox" class="ml-2 text-sm text-gray-300">Follow External Links</label>
-            </div>
-            <div class="flex items-center mt-3">
-                <input type="checkbox" id="brute-force-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                <label for="brute-force-checkbox" class="ml-2 text-sm text-gray-300">Enable Brute-Force (Subdomain Scans)</label>
-            </div>
-            <p class="text-xs text-yellow-400 mt-3 text-center sm:text-left">Note: Scans with a depth greater than 1 or with brute-force enabled may take significantly longer.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                <button id="scan-button" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Scan Site</button>
-                <button id="subdomain-button" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">Find Subdomains</button>
-            </div>
-        </div>
-
-        <div id="loading-spinner" class="hidden my-6 flex justify-center"><div class="spinner"></div></div>
-        <p id="error-message" class="my-4 text-center text-red-500 font-medium"></p>
-        
-        <div id="results-container" class="bg-gray-800 mt-6 p-6 rounded-lg shadow-lg border border-gray-700 hidden">
-            <div class="flex justify-between items-center mb-4">
-                 <div class="flex items-center">
-                    <h2 class="text-2xl font-bold text-gray-100" id="results-title">Results</h2>
-                    <div id="select-all-container" class="ml-6 hidden">
-                        <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <label for="select-all-checkbox" class="ml-2 text-sm text-gray-300">Select All</label>
-                    </div>
-                </div>
-                <div class="flex gap-2 flex-wrap justify-end">
-                    <button id="sitemap-btn" class="hidden bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition">View Map</button>
-                    <button id="export-csv-btn" class="hidden bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition">Export Selected</button>
-                    <button id="save-all-local-btn" class="hidden bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save All Local</button>
-                    <button id="archive-all-btn" class="hidden bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition">Archive</button>
-                </div>
-            </div>
-            <p class="text-gray-400 mb-4" id="results-summary"></p>
-            <div id="results-list" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
-        </div>
-
-        <!-- Analysis Section -->
-        <div id="analysis-container" class="bg-gray-800 mt-6 p-6 rounded-lg shadow-lg border border-gray-700 hidden">
-             <h2 class="text-2xl font-bold text-gray-100 mb-4">Analysis Tools</h2>
-             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                 <button id="diff-main-btn" class="w-full bg-teal-600 text-white py-2 rounded-md hover:bg-teal-700 transition">Diff (Main URL)</button>
-                 <button id="tech-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Detect Tech (Main URL)</button>
-                 <button id="headers-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Analyze Headers (Main URL)</button>
-                 <button id="links-btn" class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition">Check All For Broken Links</button>
-             </div>
-        </div>
-    </div>
-
-    <!-- Modals -->
-    <div id="sitemap-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 h-5/6">
-            <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold" id="sitemap-modal-title">Visual Sitemap</h3>
-                <button id="close-sitemap-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div id="sitemap-container" class="relative w-full h-full p-4 overflow-auto sitemap-container">
-                <div id="sitemap-legend" class="absolute top-2 left-2 bg-gray-900 bg-opacity-80 p-3 rounded-md text-xs text-gray-300 border border-gray-700 z-10"></div>
-                <svg id="sitemap-svg" width="100%"></svg>
-            </div>
-        </div>
-    </div>
-    
-    <div id="analysis-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2">
-             <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold" id="analysis-modal-title">Analysis Results</h3>
-                <button id="close-analysis-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div id="analysis-modal-body" class="p-6 max-h-96 overflow-y-auto"></div>
-        </div>
-    </div>
-
-    <div id="settings-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-1/2 max-h-[80vh] flex flex-col">
-             <div class="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
-                <h3 class="text-xl font-bold">Settings</h3>
-                <button id="close-settings-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div class="p-6 space-y-6 overflow-y-auto">
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100 mb-2">Proxy Settings</h4>
-                    <label for="proxy-textarea" class="block text-sm font-medium text-gray-300 mb-2">Enter proxies, one per line (e.g., http://user:pass@host:port)</label>
-                    <textarea id="proxy-textarea" rows="5" class="w-full p-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600"></textarea>
-                    
-                    <div id="proxy-test-results-container" class="mt-4 hidden">
-                        <h5 class="text-md font-semibold text-gray-200 mb-2">Proxy Test Results:</h5>
-                        <div id="proxy-test-results" class="max-h-32 overflow-y-auto p-3 bg-gray-900 rounded-md border border-gray-700 text-sm space-y-1">
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center my-4">
-                        <input type="checkbox" id="enable-proxies-checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <label for="enable-proxies-checkbox" class="ml-2 text-sm text-gray-300">Enable Proxies for Archiving</LabeL>
-                    </div>
-                </div>
-                
-                <div class="border-t border-gray-700 pt-4">
-                     <h4 class="text-lg font-semibold text-gray-100 mb-2">Archive Settings</h4>
-                     <label for="archive-folder-input" class="block text-sm font-medium text-gray-300 mb-2">Local Archive Subfolder (e.g., "my-domain")</label>
-                    <input type="text" id="archive-folder-input" placeholder="Leave blank to save in main archive" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-gray-200 border-gray-600">
-                </div>
-
-                <!-- NEW: Auth Cookie Settings -->
-                <div class="border-t border-gray-700 pt-4">
-                     <h4 class="text-lg font-semibold text-gray-100 mb-2">Authentication Settings</h4>
-                     <p class="text-xs text-gray-400 mb-3">
-                        For scanning sites that require login. Find these in your browser's DevTools (Application > Cookies).
-                     </p>
-                     <div class="space-y-3">
-                        <div>
-                            <label for="cookie-domain-input" class="block text-sm font-medium text-gray-300 mb-1">Auth Domain (e.g., .example.com)</label>
-                            <input type="text" id="cookie-domain-input" placeholder=".example.com" class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                        </div>
-                        <div>
-                            <label for="cookie-name-input" class="block text-sm font-medium text-gray-300 mb-1">Cookie Name (e.g., sessionid)</label>
-                            <input type="text" id="cookie-name-input" placeholder="sessionid" class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                        </div>
-                        <div>
-                            <label for="cookie-value-input" class="block text-sm font-medium text-gray-300 mb-1">Cookie Value</label>
-                            <input type="text" id="cookie-value-input" placeholder="abc123..." class="w-full px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                        </div>
-                     </div>
-                </div>
-            </div>
-
-            <div class="p-4 border-t border-gray-700 mt-auto flex-shrink-0">
-                <p id="settings-status-message" class="text-sm mb-3 text-center"></p>
-                <div class="flex flex-col sm:flex-row justify-end gap-3">
-                    <button id="test-proxies-btn" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 transition">Test Proxies</button>
-                    <button id="save-settings-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Save Settings</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="about-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
-             <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold">About Ariadne</h3>
-                <button id="close-about-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <!-- UPDATED ABOUT SECTION -->
-            <div id="about-modal-body" class="p-6 max-h-[70vh] overflow-y-auto space-y-4">
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Main Scanning Features</h4>
-                    <p class="text-sm mt-1"><strong>Scan Site:</strong> Initiates a comprehensive scan to find all pages of a website. This scan uses a stealth-enabled browser to bypass anti-bot services, find sitemaps, and parse JavaScript files for hidden links. It automatically handles dynamic content and "infinite scroll" pages by intelligently scrolling until no new content is loaded.</p>
-                    <p class="text-sm mt-1"><strong>Find Subdomains:</strong> Discovers subdomains using passive sources (Google, Certificate Logs, ThreatCrowd) and active DNS enumeration (Zone Transfers, Brute-Force). All results are validated with a robust, custom DNS resolver to ensure they are live.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Scan Options</h4>
-                    <p class="text-sm mt-1"><strong>Depth:</strong> Controls how many 'layers' deep the 'Scan Site' crawler will go. A depth of 1 scans the starting page. A depth of 2 scans that page and every page it links to.</p>
-                    <p class="text-sm mt-1"><strong>Follow External Links:</strong> Allows the 'Scan Site' crawler to follow hyperlinks to different websites.</p>
-                    <p class="text-sm mt-1"><strong>Enable Brute-Force:</strong> Enables the active (and slower) brute-force scan when finding subdomains.</p>
-                </div>
-                 <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Results & Actions</h4>
-                    <p class="text-sm mt-1"><strong>Results List:</strong> Displays all pages or subdomains found. You can select items individually or use "Select All".</p>
-                    <p class="text-sm mt-1"><strong>Export Selected:</strong> Saves the selected items to a CSV file.</p>
-                    <p class="text-sm mt-1"><strong>Archive Selected:</strong> Submits the selected items to be permanently saved on the <a href="https://archive.org/" target="_blank" class="text-blue-400 hover:underline">Internet Archive</a>. This uses proxies if they are enabled.</p>
-                    <p class="text-sm mt-1"><strong>Save All Local:</strong> Creates a complete, self-contained offline copy of the selected pages, embedding all CSS, images, and scripts. This also uses the stealth browser to capture the full page.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Change Detection</h4>
-                    <p class="text-sm mt-1"><strong>Check for Changes (Diff):</strong> This feature compares the live version of a page against its most recent snapshot on the Internet Archive. It uses the stealth-enabled browser (with your auth cookie, if set) to get the *true* live content, providing an accurate comparison. It then displays a side-by-side diff highlighting all changes.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Visual Maps</h4>
-                    <p class="text-sm mt-1"><strong>View Map:</strong> Generates an interactive D3.js sitemap or subdomain map. Nodes are clickable and will open the corresponding URL in a new tab. The legend provides scan info like IP address, domain provider, and scan time.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Analysis Tools</h4>
-                    <p class="text-sm mt-1"><strong>Detect Tech:</strong> Identifies web technologies (e.g., WordPress, React) used on the main URL.</p>
-                    <p class="text-sm mt-1"><strong>Analyze Headers:</strong> Inspects the main URL's HTTP response for important security headers.</p>
-                    <p class="text-sm mt-1"><strong>Check All For Broken Links:</strong> Concurrently tests every link found during a site scan and categorizes them by status code (e.g., 404) or network errors.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Automated Scanning</h4>
-                     <p class="text-sm mt-1"><strong>Scan Scheduler:</strong> Transforms the tool into an automated monitoring system. You can schedule recurring jobs to automatically find subdomains, run a diff check on each one, and archive any that have changed. Schedules are persistent and can be set to run daily, weekly, etc.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Configuration (Settings)</h4>
-                    <p class="text-sm mt-1"><strong>Proxy Settings:</strong> Add a list of proxies to be used for archiving. The "Test Proxies" button will validate your list in parallel and report which ones are working.</p>
-                    <p class="text-sm mt-1"><strong>Archive Settings:</strong> Specify a subfolder name to organize your locally saved HTML files.</p>
-                    <p class="text-sm mt-1"><strong>Authentication Settings:</strong> Inject a session cookie (Domain, Name, Value) into the browser. This allows the "Scan Site", "Save Local Copy", and "Diff" features to work on sites that require you to be logged in.</p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-gray-100">Convenience Features</h4>
-                    <p class="text-sm mt-1"><strong>Load Last Scan Results:</strong> Instantly reload the results of your most recent subdomain scan without running it again.</p>
-                    <p class="text-sm mt-1"><strong>View Local Archives:</strong> Opens a modal that lists all your locally saved HTML files, allowing you to open them directly.</p>
-                </div>
-            </div>
-            <!-- END UPDATED ABOUT SECTION -->
-        </div>
-    </div>
-    
-    <div id="diff-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 h-5/6 flex flex-col">
-            <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold" id="diff-modal-title">Site Changes</h3>
-                <button id="close-diff-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div id="diff-output" class="p-6 overflow-y-auto flex-grow"></div>
-            <div id="diff-modal-footer" class="p-4 border-t border-gray-700 text-center">
-                <p id="diff-summary" class="mb-4"></p>
-                <button id="archive-new-version-btn" class="hidden bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Archive New Version</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="scheduler-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
-            <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold">Scan Scheduler</h3>
-                <button id="close-scheduler-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div class="p-6">
-                <div class="mb-6 border-b border-gray-700 pb-6">
-                    <h4 class="text-lg font-semibold mb-3">Add New Schedule</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input type="text" id="schedule-domain-input" placeholder="Enter domain (e.g., example.com)" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                        <input type="datetime-local" id="schedule-start-date" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                        <select id="schedule-frequency" class="px-4 py-2 border rounded-md bg-gray-700 text-gray-200 border-gray-600">
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value-="bi-weekly">Bi-Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="every-other-month">Every Other Month</option>
-                        </select>
-                        <button id="save-schedule-btn" class="bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Save Schedule</button>
-                    </div>
-                    <p id="schedule-status-message" class="text-sm mt-3"></p>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold mb-3">Current Schedules</h4>
-                    <div id="scheduled-jobs-list" class="space-y-3 max-h-60 overflow-y-auto">
-                        <!-- Scheduled jobs will be populated here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div id="local-archive-modal" class="hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-11/12 md:w-2/3">
-            <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h3 class="text-xl font-bold">Local Archives</h3>
-                <button id="close-local-archive-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div class="p-6">
-                <div id="local-archives-list" class="space-y-3 max-h-80 overflow-y-auto">
-                    <!-- Saved archives will be populated here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-
-    <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        const API_BASE_URL = 'http://127.0.0.1:5010';
-        let currentResults = [];
-        let scanSummaryData = null;
-        let scanStartTime = 0;
-        let currentScanType = '';
-        let currentArchiveFolder = '';
-
-        // DOM Elements
-        const urlInput = document.getElementById('url-input');
-        const depthInput = document.getElementById('depth-input');
-        const followExternalCheckbox = document.getElementById('follow-external-checkbox');
-        const bruteForceCheckbox = document.getElementById('brute-force-checkbox');
-        const scanButton = document.getElementById('scan-button');
-        const subdomainButton = document.getElementById('subdomain-button');
-        const loadingSpinner = document.getElementById('loading-spinner');
-        const resultsContainer = document.getElementById('results-container');
-        const resultsTitle = document.getElementById('results-title');
-        const resultsSummary = document.getElementById('results-summary');
-        const resultsList = document.getElementById('results-list');
-        const errorMessage = document.getElementById('error-message');
-        const exportCsvBtn = document.getElementById('export-csv-btn');
-        const archiveAllBtn = document.getElementById('archive-all-btn');
-        const saveAllLocalBtn = document.getElementById('save-all-local-btn');
-        const sitemapBtn = document.getElementById('sitemap-btn');
-        const analysisContainer = document.getElementById('analysis-container');
-        const techBtn = document.getElementById('tech-btn');
-        const headersBtn = document.getElementById('headers-btn');
-        const linksBtn = document.getElementById('links-btn');
-        const diffMainBtn = document.getElementById('diff-main-btn');
-        const selectAllContainer = document.getElementById('select-all-container');
-        const selectAllCheckbox = document.getElementById('select-all-checkbox');
-
-        // Modals
-        const sitemapModal = document.getElementById('sitemap-modal');
-        const closeSitemapModalBtn = document.getElementById('close-sitemap-modal-btn');
-        const analysisModal = document.getElementById('analysis-modal');
-        const closeAnalysisModalBtn = document.getElementById('close-analysis-modal-btn');
-        const settingsModal = document.getElementById('settings-modal');
-        const closeSettingsModalBtn = document.getElementById('close-settings-modal-btn');
-        const aboutModal = document.getElementById('about-modal');
-        const aboutBtn = document.getElementById('about-btn');
-        const closeAboutModalBtn = document.getElementById('close-about-modal-btn');
-        const diffModal = document.getElementById('diff-modal');
-        const closeDiffModalBtn = document.getElementById('close-diff-modal-btn');
-        const diffOutput = document.getElementById('diff-output');
-        const diffSummary = document.getElementById('diff-summary');
-        const archiveNewVersionBtn = document.getElementById('archive-new-version-btn');
-        const settingsBtn = document.getElementById('settings-btn');
-        const proxyTextarea = document.getElementById('proxy-textarea');
-        const enableProxiesCheckbox = document.getElementById('enable-proxies-checkbox');
-        const archiveFolderInput = document.getElementById('archive-folder-input');
-        const settingsStatusMessage = document.getElementById('settings-status-message');
-        const saveSettingsBtn = document.getElementById('save-settings-btn');
-        const testProxiesBtn = document.getElementById('test-proxies-btn');
-        const proxyTestResultsContainer = document.getElementById('proxy-test-results-container');
-        const proxyTestResults = document.getElementById('proxy-test-results');
-        
-        // NEW: Auth Cookie Elements
-        const cookieDomainInput = document.getElementById('cookie-domain-input');
-        const cookieNameInput = document.getElementById('cookie-name-input');
-        const cookieValueInput = document.getElementById('cookie-value-input');
-        
-        const schedulerModal = document.getElementById('scheduler-modal');
-        const schedulerBtn = document.getElementById('scheduler-btn');
-        const closeSchedulerModalBtn = document.getElementById('close-scheduler-modal-btn');
-        const scheduleDomainInput = document.getElementById('schedule-domain-input');
-        const scheduleStartDate = document.getElementById('schedule-start-date');
-        const scheduleFrequency = document.getElementById('schedule-frequency');
-        const saveScheduleBtn = document.getElementById('save-schedule-btn');
-        const scheduleStatusMessage = document.getElementById('schedule-status-message');
-        const scheduledJobsList = document.getElementById('scheduled-jobs-list');
-        const historyBtn = document.getElementById('history-btn');
-        const archivesBtn = document.getElementById('archives-btn');
-        const localArchiveModal = document.getElementById('local-archive-modal');
-        const closeLocalArchiveModalBtn = document.getElementById('close-local-archive-modal-btn');
-        const localArchivesList = document.getElementById('local-archives-list');
-        
-        let originalResultsSummaryText = '';
-
-        // Make functions globally available for onclick attributes
-        window.runDiffCheck = async function(url, index) {
-            let statusSpan = null;
-            if (index !== -1) {
-                statusSpan = document.getElementById(`status-${index}`);
-                statusSpan.textContent = 'Checking...';
-                statusSpan.className = 'text-sm font-medium text-yellow-500 flex-shrink-0';
-            }
-
-            diffOutput.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
-            diffSummary.textContent = 'Checking for changes...';
-            archiveNewVersionBtn.classList.add('hidden');
-            diffModal.classList.remove('hidden');
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/check-diff`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url }),
-                });
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                if (data.has_changes) {
-                    diffOutput.innerHTML = data.diff_html;
-                    diffSummary.textContent = 'Changes detected. Review the differences below.';
-                    archiveNewVersionBtn.classList.remove('hidden');
-                    archiveNewVersionBtn.onclick = () => {
-                        closeDiffModalBtn.click();
-                        archiveUrl(url, index);
-                    };
-                } else {
-                    diffOutput.innerHTML = `<p class="text-center p-8 text-lg">${data.message || 'No changes found.'}</p>`;
-                    diffSummary.textContent = data.message || 'No changes found.';
-                }
-                
-                if (statusSpan) {
-                    statusSpan.textContent = data.has_changes ? 'Changed' : 'Unchanged';
-                    statusSpan.className = `text-sm font-medium ${data.has_changes ? 'text-green-500' : 'text-gray-500'} flex-shrink-0`;
-                }
-
-            } catch (err) {
-                diffOutput.innerHTML = `<p class="text-red-500">${err.message}</p>`;
-                diffSummary.textContent = `Error: ${err.message}`;
-                if (statusSpan) {
-                    statusSpan.textContent = 'Diff Error';
-                    statusSpan.className = 'text-sm font-medium text-red-500 flex-shrink-0';
-                }
-            }
-        }
-
-        window.runSingleTechAnalysis = function(url) { runAnalysis('/detect-tech', `Technology Stack for ${url}`, { url }); }
-        window.runSingleHeaderAnalysis = function(url) { runAnalysis('/analyze-headers', `Security Headers for ${url}`, { url }); }
-        window.scanSubdomain = function(subdomain) {
-            urlInput.value = subdomain;
-            performStreamingScan();
-        }
-
-        window.deleteSchedule = async function(id) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/delete-schedule`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id }),
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    loadSchedules();
-                } else {
-                    alert(`Error: ${data.error}`);
-                }
-            } catch (e) {
-                alert('Failed to delete schedule.');
-            }
-        }
-        
-        window.saveLocalCopy = function(link, index) {
-            return new Promise((resolve) => {
-                let statusSpan = null;
-                if (index !== -1) {
-                    statusSpan = document.getElementById(`local-status-${index}`);
-                }
-
-                const updateStatus = (text, colorClass, title = '') => {
-                    if (statusSpan) {
-                        statusSpan.textContent = text;
-                        statusSpan.className = `text-sm font-medium ${colorClass} flex-shrink-0 ml-2`;
-                        statusSpan.title = title;
-                    } else {
-                        resultsSummary.textContent = text;
-                        resultsSummary.className = `text-sm mb-4 ${colorClass}`;
-                    }
-                };
-
-                updateStatus('Saving...', 'text-gray-400');
-
-                const fullUrl = link.startsWith('http') ? link : `https://${link}`;
-                const folder = archiveFolderInput.value;
-                const eventSource = new EventSource(`${API_BASE_URL}/save-local-copy?url=${encodeURIComponent(fullUrl)}&folder=${encodeURIComponent(folder)}`);
-
-                eventSource.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    if (data.status) {
-                        updateStatus(data.status, 'text-yellow-500');
-                    }
-                    if (data.success) {
-                        updateStatus('Saved!', 'text-green-500', data.success);
-                        eventSource.close();
-                        resolve();
-                    }
-                    if (data.error) {
-                        updateStatus('Failed!', 'text-red-500', data.error);
-                        eventSource.close();
-                        resolve();
-                    }
-                };
-                eventSource.addEventListener('end', () => resolve());
-                eventSource.onerror = () => {
-                    updateStatus('Failed!', 'text-red-500', 'Connection error to the backend server.');
-                    eventSource.close();
-                    resolve();
-                };
-            });
-        }
-
-        function addResultItem(item, index) {
-            const div = document.createElement('div');
-            div.className = 'result-item flex items-center justify-between p-2 rounded transition';
-            
-            let displayName, linkUrl;
-            let archiveStatusHtml = `<span id="status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0"></span>`;
-            let localStatusHtml = `<span id="local-status-${index}" class="text-sm font-medium text-gray-500 flex-shrink-0 ml-2"></span>`;
-            let actionsHtml = '';
-
-            if (currentScanType === 'sitemap') {
-                displayName = item;
-                linkUrl = item;
-                actionsHtml = `
-                    <button onclick="saveLocalCopy('${linkUrl}', ${index})" class="ml-2 bg-blue-600 text-white px-2 py-1 text-xs rounded hover:bg-blue-700 transition" title="Save Local Copy">Save</button>
-                    <button onclick="runDiffCheck('${linkUrl}', ${index})" class="ml-2 bg-teal-600 text-white px-2 py-1 text-xs rounded hover:bg-teal-700 transition" title="Check for Changes">Diff</button>
-                    <button onclick="runSingleTechAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
-                    <button onclick="runSingleHeaderAnalysis('${linkUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
-                `;
-            } else if (currentScanType === 'subdomain') {
-                 displayName = `${item.name} <span class="text-xs text-gray-400 ml-2">(${item.type})</span>`;
-                 linkUrl = item.name;
-                 const fullSubdomainUrl = `https://${linkUrl}`;
-                 actionsHtml = `
-                    <button onclick="saveLocalCopy('${fullSubdomainUrl}', ${index})" class="ml-2 bg-blue-600 text-white px-2 py-1 text-xs rounded hover:bg-blue-700 transition" title="Save Local Copy">Save</button>
-                    <button onclick="runDiffCheck('${fullSubdomainUrl}', ${index})" class="ml-2 bg-teal-600 text-white px-2 py-1 text-xs rounded hover:bg-teal-700 transition" title="Check for Changes">Diff</button>
-                    <button onclick="runSingleTechAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Detect Tech">Tech</button>
-                    <button onclick="runSingleHeaderAnalysis('${fullSubdomainUrl}')" class="ml-2 bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition" title="Analyze Headers">Headers</button>
-                    <button onclick="scanSubdomain('${linkUrl}')" class="ml-2 bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition">Scan</button>
-                 `;
-            } else {
-                 displayName = (typeof item === 'string') ? item : item.name;
-                 linkUrl = displayName;
-            }
-            
-            const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`;
-
-            div.innerHTML = `
-                <div class="flex items-center truncate mr-4">
-                    <input type="checkbox" class="result-checkbox h-4 w-4 rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500 mr-4" data-link='${linkUrl}'>
-                    <a href="${fullUrl}" target="_blank" class="text-blue-500 hover:underline">${displayName}</a>
-                </div>
-                <div class="flex items-center flex-shrink-0">
-                    ${archiveStatusHtml}
-                    ${localStatusHtml}
-                    ${actionsHtml}
-                </div>
-            `;
-            
-            resultsList.appendChild(div);
-        }
-        
-        // --- Scheduler Functions ---
-        async function loadSchedules() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/get-schedules`);
-                const jobs = await response.json();
-                scheduledJobsList.innerHTML = '';
-                if (jobs.length === 0) {
-                    scheduledJobsList.innerHTML = '<p class="text-gray-400">No scans are currently scheduled.</p>';
-                    return;
-                }
-                jobs.forEach(job => {
-                    const nextRun = new Date(job.next_run).toLocaleString();
-                    const div = document.createElement('div');
-                    div.className = 'bg-gray-700 p-3 rounded-md flex justify-between items-center';
-                    div.innerHTML = `
-                        <div>
-                            <p class="font-semibold">${job.domain}</p>
-                            <p class="text-xs text-gray-400">Next run: ${nextRun}</p>
-                        </div>
-                        <button onclick="deleteSchedule('${job.id}')" class="bg-red-600 text-white px-3 py-1 text-xs rounded hover:bg-red-700 transition">Delete</button>
-                    `;
-                    scheduledJobsList.appendChild(div);
-                });
-            } catch (e) {
-                scheduledJobsList.innerHTML = '<p class="text-red-500">Could not load schedules.</p>';
-            }
-        }
-        
-        // --- All other existing JS functions ---
-
-        function setUILoading(isLoading) {
-            loadingSpinner.classList.toggle('hidden', !isLoading);
-            scanButton.disabled = isLoading;
-            subdomainButton.disabled = isLoading;
-            if (isLoading) {
-                errorMessage.textContent = '';
-                resultsContainer.classList.add('hidden');
-                analysisContainer.classList.add('hidden');
-                scanSummaryData = null; 
-            }
-        }
-
-        function showActionButtons(show) {
-            const hasResults = currentResults.length > 0;
-            exportCsvBtn.classList.toggle('hidden', !show);
-            archiveAllBtn.classList.toggle('hidden', !show);
-            saveAllLocalBtn.classList.toggle('hidden', !show);
-            sitemapBtn.classList.toggle('hidden', !show);
-            analysisContainer.classList.toggle('hidden', !show);
-            selectAllContainer.classList.toggle('hidden', !hasResults); 
-            updateActionButtonsState();
-        }
-
-        function updateActionButtonsState() {
-            const selectedCount = document.querySelectorAll('.result-checkbox:checked').length;
-            const hasResults = currentResults.length > 0;
-
-            exportCsvBtn.disabled = selectedCount === 0;
-            exportCsvBtn.classList.toggle('opacity-50', selectedCount === 0);
-
-            const actionButtonsDisabled = hasResults && selectedCount === 0;
-            
-            archiveAllBtn.disabled = actionButtonsDisabled;
-            archiveAllBtn.classList.toggle('opacity-50', actionButtonsDisabled);
-            
-            saveAllLocalBtn.disabled = actionButtonsDisabled;
-            saveAllLocalBtn.classList.toggle('opacity-50', actionButtonsDisabled);
-
-            if (selectedCount > 0) {
-                archiveAllBtn.textContent = `Archive ${selectedCount} Selected`;
-                saveAllLocalBtn.textContent = `Save ${selectedCount} Local`;
-            } else if (!hasResults) {
-                archiveAllBtn.textContent = 'Archive Base URL';
-                saveAllLocalBtn.textContent = 'Save Base URL Local';
-            } else {
-                archiveAllBtn.textContent = 'Archive';
-                saveAllLocalBtn.textContent = 'Save All Local';
-            }
-        }
-
-        function displayStaticResults(title, items, summaryPrefix) {
-            resultsContainer.classList.remove('hidden');
-            resultsTitle.textContent = title;
-            resultsList.innerHTML = ''; 
-            originalResultsSummaryText = `${summaryPrefix} ${items.length} unique items.`;
-            resultsSummary.textContent = originalResultsSummaryText;
-            currentResults = items;
-
-            showActionButtons(true);
-
-            if (items.length === 0) {
-                resultsList.innerHTML = '<p>No items found.</p>';
-                return;
-            }
-
-            items.forEach((item, index) => {
-                addResultItem(item, index);
-            });
-            updateActionButtonsState();
-        }
-
-        function getDomainName(url) {
-            try {
-                let fullUrl = url.trim();
-                if (!/^[a-zA-Z]+:\/\//.test(fullUrl)) fullUrl = 'http://' + fullUrl;
-                const hostname = new URL(fullUrl).hostname.replace(/^www\./, '');
-                
-                // Handle domain parts like .co.uk
-                const parts = hostname.split('.');
-                if (parts.length > 2 && parts[parts.length - 2].length <= 3 && parts[parts.length - 1].length <= 3) {
-                     return parts.slice(-3).join('.');
-                }
-                return parts.slice(-2).join('.');
-            } catch (error) {
-                const parts = url.trim().replace(/^www\./, '').split('/')[0].split('.');
-                 if (parts.length > 2 && parts[parts.length - 2].length <= 3 && parts[parts.length - 1].length <= 3) {
-                     return parts.slice(-3).join('.');
-                }
-                return parts.slice(-2).join('.');
-            }
-        }
-
-        async function fetchIpAddress(domain) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/get-ip`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain }),
-                });
-                if (!response.ok) {
-                    const errData = await response.json();
-                    console.error("IP fetch error:", errData.error);
-                    return 'Error';
-                }
-                const data = await response.json();
-                return data.ip_address || 'Not found';
-            } catch (err) { 
-                console.error("IP fetch exception:", err);
-                return 'N/A'; 
-            }
-        }
-
-        async function fetchRegistrar(domain) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/get-registrar`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain }),
-                });
-                if (!response.ok) {
-                     const errData = await response.json();
-                     console.error("Registrar fetch error:", errData.error);
-                     return 'Error';
-                }
-                const data = await response.json();
-                return data.registrar || 'Not found';
-            } catch (err) { 
-                console.error("Registrar fetch exception:", err);
-                return 'N/A'; 
-            }
-        }
-        
-        function performStreamingScan() {
-            const url = urlInput.value;
-            if (!url) {
-                errorMessage.textContent = 'Please enter a URL.';
-                return;
-            }
-            
-            currentScanType = 'sitemap';
-            setUILoading(true);
-            resultsContainer.classList.remove('hidden');
-            resultsTitle.textContent = 'Scan in Progress...';
-            resultsSummary.textContent = 'Waiting for results...';
-            originalResultsSummaryText = 'Waiting for results...';
-            resultsList.innerHTML = '';
-            currentResults = [];
-            scanStartTime = Date.now();
-
-            const followExternal = followExternalCheckbox.checked;
-            const params = new URLSearchParams({ url, depth: depthInput.value, follow_external: followExternal });
-            const eventSource = new EventSource(`${API_BASE_URL}/scan?${params.toString()}`);
-
-            eventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                if (data.error) {
-                    errorMessage.textContent = `Error: ${data.error}`;
-                    eventSource.close();
-                    setUILoading(false);
-                } else if (data.status) {
-                     resultsSummary.textContent = data.status;
-                     originalResultsSummaryText = data.status;
-                } else if (data.link) {
-                    if (!currentResults.includes(data.link)) {
-                        currentResults.push(data.link);
-                        addResultItem(data.link, currentResults.length - 1);
-                        resultsSummary.textContent = `Found ${currentResults.length} unique items...`;
-                        originalResultsSummaryText = `Found ${currentResults.length} unique items...`;
-                    }
-                }
-            };
-
-            eventSource.addEventListener('end', async function(event) {
-                eventSource.close();
-                setUILoading(false);
-                const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
-                resultsTitle.textContent = "Scan Complete";
-                
-                if(currentResults.length === 0) {
-                    originalResultsSummaryText = `Scan finished in ${scanDuration}s. No items found. (Site may be protected or empty).`;
-                } else {
-                    originalResultsSummaryText = `Scan finished in ${scanDuration}s. Found ${currentResults.length} unique items.`;
-                }
-                resultsSummary.textContent = originalResultsSummaryText;
-                
-                const hostname = getDomainName(urlInput.value);
-                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(hostname), fetchRegistrar(hostname) ]);
-
-                scanSummaryData = { hostname, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
-                showActionButtons(true);
-            });
-
-            eventSource.onerror = function(err) {
-                errorMessage.textContent = 'An error occurred. The connection may have been lost.';
-                eventSource.close();
-                setUILoading(false);
-            };
-        }
-        
-        async function performSubdomainSearch() {
-            const url = urlInput.value;
-            if (!url) {
-                errorMessage.textContent = 'Please enter a domain.';
-                return;
-            }
-            
-            currentScanType = 'subdomain';
-            setUILoading(true);
-            const scanStartTime = Date.now();
-            const bruteForce = bruteForceCheckbox.checked;
-            const searchDomain = getDomainName(url);
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/find-subdomains`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain: searchDomain, brute_force: bruteForce }),
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || `HTTP error! status: ${response.status}`);
-                displayStaticResults("Found Subdomains", data.subdomains, "Found");
-            } catch (err) {
-                errorMessage.textContent = `Error: ${err.message}`;
-            } finally {
-                const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(2);
-                const [ipAddress, registrar] = await Promise.all([ fetchIpAddress(searchDomain), fetchRegistrar(searchDomain) ]);
-                scanSummaryData = { hostname: searchDomain, ip_address: ipAddress, registrar, page_count: currentResults.length, scan_duration: scanDuration };
-                setUILoading(false);
-            }
-        }
-        
-        function archiveUrl(link, index) {
-            return new Promise((resolve) => {
-                let statusSpan = null;
-                if (index !== -1) {
-                    statusSpan = document.getElementById(`status-${index}`);
-                }
-
-                const updateStatus = (text, colorClass, title = '') => {
-                    if (statusSpan) {
-                        statusSpan.textContent = text;
-                        statusSpan.className = `text-sm font-medium ${colorClass} flex-shrink-0`;
-                        statusSpan.title = title;
-                    } else {
-                        resultsSummary.textContent = text;
-                        resultsSummary.className = `text-sm mb-4 ${colorClass}`;
-                    }
-                };
-
-                updateStatus('Connecting...', 'text-gray-400');
-
-                const fullUrl = link.startsWith('http') ? link : `https://${link}`;
-                const eventSource = new EventSource(`${API_BASE_URL}/archive-url?url=${encodeURIComponent(fullUrl)}`);
-
-                eventSource.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    if (data.status) {
-                        updateStatus(data.status, 'text-yellow-500');
-                    }
-                    if (data.success) {
-                        updateStatus('Saved!', 'text-green-500');
-                        eventSource.close();
-                        resolve();
-                    }
-                    if (data.error) {
-                        updateStatus('Failed!', 'text-red-500', data.error);
-                        eventSource.close();
-                        resolve();
-                    }
-                };
-                eventSource.addEventListener('end', () => resolve());
-                eventSource.onerror = () => {
-                    updateStatus('Failed!', 'text-red-500', 'Connection error to the backend server.');
-                    eventSource.close();
-                    resolve();
-                };
-            });
-        }
-
-        async function archiveSelectedResults() {
-            const selectedCheckboxes = Array.from(document.querySelectorAll('.result-checkbox:checked'));
-            let itemsToArchive = [];
-
-            if (selectedCheckboxes.length > 0) {
-                itemsToArchive = selectedCheckboxes.map(cb => {
-                    const link = cb.dataset.link;
-                    const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
-                    const originalIndex = currentResults.indexOf(originalItem);
-                    return { link, index: originalIndex };
-                });
-            } else if (currentResults.length === 0 && urlInput.value) {
-                itemsToArchive.push({ link: urlInput.value, index: -1 });
-            } else {
-                return;
-            }
-
-            const initialButtonText = archiveAllBtn.textContent;
-            archiveAllBtn.disabled = true;
-            archiveAllBtn.textContent = 'Archiving...';
-
-            for (let i = 0; i < itemsToArchive.length; i++) {
-                const item = itemsToArchive[i];
-                resultsSummary.textContent = `Archiving ${i + 1} of ${itemsToArchive.length}...`;
-                await archiveUrl(item.link, item.index);
-                if (i < itemsToArchive.length - 1) await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            
-            archiveAllBtn.textContent = initialButtonText;
-            resultsSummary.textContent = originalResultsSummaryText;
-            updateActionButtonsState();
-        }
-
-        async function saveAllLocalResults() {
-            const selectedCheckboxes = Array.from(document.querySelectorAll('.result-checkbox:checked'));
-            let itemsToSave = [];
-
-            if (selectedCheckboxes.length > 0) {
-                itemsToSave = selectedCheckboxes.map(cb => {
-                    const link = cb.dataset.link;
-                    const originalItem = currentResults.find(item => (typeof item === 'string' ? item : item.name) === link);
-                    const originalIndex = currentResults.indexOf(originalItem);
-                    
-                    let fullUrl = link;
-                    if (currentScanType === 'subdomain') {
-                        fullUrl = `https://${link}`;
-                    }
-                    return { link: fullUrl, index: originalIndex };
-                });
-            } else if (currentResults.length === 0 && urlInput.value) {
-                itemsToSave.push({ link: urlInput.value, index: -1 }); 
-            } else {
-                return;
-            }
-
-            const initialButtonText = saveAllLocalBtn.textContent;
-            saveAllLocalBtn.disabled = true;
-            saveAllLocalBtn.textContent = 'Saving...';
-
-            for (let i = 0; i < itemsToSave.length; i++) {
-                const item = itemsToSave[i];
-                resultsSummary.textContent = `Saving ${i + 1} of ${itemsToSave.length}...`;
-                await window.saveLocalCopy(item.link, item.index);
-                if (i < itemsToSave.length - 1) await new Promise(resolve => setTimeout(resolve, 500)); 
-            }
-            
-            saveAllLocalBtn.textContent = initialButtonText;
-            resultsSummary.textContent = originalResultsSummaryText;
-            updateActionButtonsState();
-        }
-
-
-        function generateSitemap(items) {
-            const svg = d3.select("#sitemap-svg");
-            svg.selectAll("*").remove(); 
-            if (items.length === 0) return;
-            const rootName = getDomainName(urlInput.value);
-            const root = { name: rootName, children: [] };
-            
-            if (currentScanType === 'sitemap') {
-                 items.forEach(link => {
-                    try {
-                        const url = new URL(link);
-                        const pathParts = url.pathname.split('/').filter(p => p.length > 0);
-                        let currentNode = root;
-                        pathParts.forEach(part => {
-                            let childNode = currentNode.children.find(child => child.name === part);
-                            if (!childNode) { childNode = { name: part, children: [] }; currentNode.children.push(childNode); }
-                            currentNode = childNode;
-                        });
-                    } catch (e) { console.error(`Invalid URL: ${link}`, e); }
-                });
-            } else if (currentScanType === 'subdomain') {
-                items.forEach(item => {
-                    const parts = item.name.replace(`.${rootName}`, '').split('.').reverse();
-                    let currentNode = root;
-                    parts.forEach((part, index) => {
-                        let childNode = currentNode.children.find(child => child.name === part);
-                        if (!childNode) {
-                            childNode = { name: part, type: (index === parts.length - 1) ? item.type : undefined, fullName: (index === parts.length - 1) ? item.name : undefined, children: [] };
-                            currentNode.children.push(childNode);
-                        }
-                        currentNode = childNode;
-                    });
-                });
-            }
-            
-            const nodes = d3.hierarchy(root).descendants();
-            const nodeHeight = 25;
-            const dynamicHeight = Math.max(nodes.length * nodeHeight, document.getElementById('sitemap-container').clientHeight);
-            svg.attr('height', dynamicHeight);
-            const container = document.getElementById('sitemap-container');
-            const width = container.clientWidth;
-            const treeLayout = d3.tree().size([dynamicHeight - 40, width - 200]);
-            const rootNode = d3.hierarchy(root);
-            treeLayout(rootNode);
-
-            const g = svg.append("g").attr("transform", "translate(100,20)");
-            g.selectAll(".link").data(rootNode.links()).enter().append("path").attr("class", "link").attr("d", d3.linkHorizontal().x(d => d.y).y(d => d.x));
-            const node = g.selectAll(".node").data(rootNode.descendants()).enter().append("g")
-                .attr("class", "node").attr("transform", d => `translate(${d.y},${d.x})`)
-                .on("click", (event, d) => {
-                    if (d.parent === null) return;
-                    let fullUrl;
-                    const rootName = getDomainName(urlInput.value);
-                    if (currentScanType === 'sitemap') {
-                        const path = d.ancestors().reverse().map(n => n.data.name).slice(1).join('/');
-                        fullUrl = `https://${rootName}/${path}`;
-                    } else if (currentScanType === 'subdomain') {
-                        if (d.data.fullName) fullUrl = `https://${d.data.fullName}`;
-                    }
-                    if (fullUrl) window.open(fullUrl, '_blank');
-                });
-            node.append("circle").attr("r", 5);
-            node.append("text").attr("dy", "0.31em").attr("x", d => d.children ? -8 : 8).attr("text-anchor", d => d.children ? "end" : "start").text(d => d.data.type ? `${d.data.name} (${d.data.type})` : d.data.name);
-            svg.call(d3.zoom().on("zoom", (event) => g.attr("transform", event.transform)));
-        }
-        
-        async function runAnalysis(endpoint, title, payload) {
-            const analysisModalTitle = document.getElementById('analysis-modal-title');
-            const analysisModalBody = document.getElementById('analysis-modal-body');
-            analysisModalTitle.textContent = `Loading ${title}...`;
-            analysisModalBody.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
-            analysisModal.classList.remove('hidden');
-            try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Analysis failed');
-                analysisModalTitle.textContent = title;
-                let html = '';
-                if (endpoint === '/detect-tech') {
-                    html = data.technologies?.length > 0 ? `<ul class="list-disc list-inside space-y-2">${data.technologies.map(tech => `<li>${tech}</li>`).join('')}</ul>` : '<p>No specific technologies detected.</p>';
-                } else if (endpoint === '/analyze-headers') {
-                    html = `<dl class="space-y-2">${Object.entries(data.headers).map(([header, status]) => `<div class="flex justify-between"><dt class="font-medium">${header}:</dt><dd class="${status === 'Present' ? 'text-green-400' : 'text-red-400'}">${status}</dd></div>`).join('')}</dl>`;
-                } else if (endpoint === '/check-links') {
-                    const brokenLinks = Object.entries(data.link_statuses).filter(([_, status]) => status !== 200 && status !== 'Error');
-                    const errorLinks = Object.entries(data.link_statuses).filter(([_, status]) => status === 'Error');
-                    html = '';
-                    if(brokenLinks.length > 0) {
-                        html += `<h4 class="font-semibold mb-2">Broken Links (404, etc.):</h4><ul class="list-disc list-inside space-y-2 mb-4">${brokenLinks.map(([link, status]) => `<li><span class="font-medium">Status ${status}:</span> <a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`).join('')}</ul>`;
-                    }
-                     if(errorLinks.length > 0) {
-                        html += `<h4 class="font-semibold mb-2">Network/SSL Errors:</h4><ul class="list-disc list-inside space-y-2">${errorLinks.map(([link, status]) => `<li><a href="${link}" target="_blank" class="text-blue-400 hover:underline">${link}</a></li>`).join('')}</ul>`;
-                    }
-                    if(html === '') {
-                        html = '<p>No broken links found!</p>';
-                    }
-                }
-                analysisModalBody.innerHTML = html;
-            } catch (err) {
-                analysisModalBody.innerHTML = `<p class="text-red-500">${err.message}</p>`;
-            }
-        }
-        
-        // --- Event Listeners ---
-        exportCsvBtn.addEventListener('click', () => {
-            const selectedCheckboxes = document.querySelectorAll('.result-checkbox:checked');
-            if (selectedCheckboxes.length === 0) return;
-            const selectedItems = Array.from(selectedCheckboxes).map(cb => {
-                const link = cb.dataset.link;
-                return currentScanType === 'subdomain' ? currentResults.find(item => item.name === link) : link;
-            });
-            const domain = getDomainName(urlInput.value) || 'scan_results';
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `${domain}_${timestamp}.csv`;
-            let csvContent = "data:text/csv;charset=utf-8,";
-            if (currentScanType === 'subdomain') {
-                csvContent += "Subdomain,Record Type\r\n";
-                selectedItems.forEach(item => { csvContent += `${item.name},${item.type}\r\n`; });
-            } else {
-                csvContent += "Found Sites\r\n";
-                selectedItems.forEach(link => { csvContent += `${link}\r\n`; });
-            }
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", filename);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
-        
-        archiveAllBtn.addEventListener('click', archiveSelectedResults);
-        saveAllLocalBtn.addEventListener('click', saveAllLocalResults);
-        scanButton.addEventListener('click', performStreamingScan);
-        subdomainButton.addEventListener('click', performSubdomainSearch);
-        
-        sitemapBtn.addEventListener('click', () => {
-            const legend = document.getElementById('sitemap-legend');
-            const mapTitle = document.getElementById('sitemap-modal-title');
-            mapTitle.textContent = currentScanType === 'sitemap' ? 'Visual Sitemap' : 'Visual Subdomain Map';
-            if (scanSummaryData) {
-                legend.innerHTML = `<h4 class="font-bold text-sm mb-2">Scan Info</h4><p><strong>Host:</strong> ${scanSummaryData.hostname}</p><p><strong>IP Address:</strong> ${scanSummaryData.ip_address}</p><p><strong>Provider:</strong> ${scanSummaryData.registrar}</p><p><strong>Items Found:</strong> ${scanSummaryData.page_count}</p><p><strong>Scan Time:</strong> ${scanSummaryData.scan_duration}s</p>`;
-            } else {
-                legend.innerHTML = '<p>Scan summary not available.</p>';
-            }
-            sitemapModal.classList.remove('hidden');
-            setTimeout(() => { generateSitemap(currentResults); }, 100); 
-        });
-
-        resultsList.addEventListener('change', (event) => {
-            if (event.target.classList.contains('result-checkbox')) updateActionButtonsState();
-        });
-        selectAllCheckbox.addEventListener('change', (event) => {
-            document.querySelectorAll('.result-checkbox').forEach(checkbox => checkbox.checked = event.target.checked);
-            updateActionButtonsState();
-        });
-        
-        closeSitemapModalBtn.addEventListener('click', () => sitemapModal.classList.add('hidden'));
-        closeAnalysisModalBtn.addEventListener('click', () => analysisModal.classList.add('hidden'));
-        closeDiffModalBtn.addEventListener('click', () => diffModal.classList.add('hidden'));
-        
-        settingsBtn.addEventListener('click', async () => {
-            settingsModal.classList.remove('hidden');
-            settingsStatusMessage.textContent = '';
-            proxyTestResultsContainer.classList.add('hidden');
-            proxyTestResults.innerHTML = '';
-            try {
-                const response = await fetch(`${API_BASE_URL}/get-settings`);
-                const data = await response.json();
-                if (response.ok) {
-                    proxyTextarea.value = data.proxies;
-                    enableProxiesCheckbox.checked = data.enabled;
-                    archiveFolderInput.value = data.archive_folder;
-                    currentArchiveFolder = data.archive_folder; 
-                    // NEW: Populate cookie fields
-                    cookieDomainInput.value = data.cookie_domain || '';
-                    cookieNameInput.value = data.cookie_name || '';
-                    cookieValueInput.value = data.cookie_value || '';
-                } else {
-                    throw new Error(data.error || 'Failed to load settings');
-                }
-            } catch (e) {
-                settingsStatusMessage.textContent = 'Error loading settings.';
-                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
-            }
-        });
-        closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
-        
-        testProxiesBtn.addEventListener('click', async () => {
-            const proxies = proxyTextarea.value.split('\n').map(p => p.trim()).filter(p => p.length > 0);
-            if (proxies.length === 0) {
-                proxyTestResultsContainer.classList.remove('hidden');
-                proxyTestResults.innerHTML = '<p class="text-yellow-400">Please enter at least one proxy to test.</p>';
-                return;
-            }
-
-            proxyTestResultsContainer.classList.remove('hidden');
-            proxyTestResults.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
-            settingsStatusMessage.textContent = `Testing ${proxies.length} proxies...`;
-            settingsStatusMessage.className = 'text-sm mt-2 text-yellow-500';
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/test-proxies`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ proxies }),
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Failed to run test');
-
-                proxyTestResults.innerHTML = '';
-                let workingCount = 0;
-                
-                if (data.results && data.results.length > 0) {
-                     data.results.forEach(res => {
-                        const p = document.createElement('p');
-                        p.className = 'font-mono';
-                        if (res.status === 'Working') {
-                            workingCount++;
-                            p.className += ' text-green-400';
-                            p.textContent = `[SUCCESS] ${res.proxy} (IP: ${res.ip})`;
-                        } else {
-                            p.className += ' text-red-400';
-                            p.textContent = `[FAILED]  ${res.proxy} (${res.status})`;
-                        }
-                        proxyTestResults.appendChild(p);
-                    });
-                } else {
-                     proxyTestResults.innerHTML = '<p class="text-gray-400">No results returned from backend.</p>';
-                }
-               
-                settingsStatusMessage.textContent = `Test complete: ${workingCount} of ${proxies.length} proxies are working.`;
-                settingsStatusMessage.className = 'text-sm mt-2 text-green-500';
-
-            } catch (e) {
-                settingsStatusMessage.textContent = `Error: ${e.message}`;
-                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
-                proxyTestResults.innerHTML = `<p class="text-red-500">Error during test: ${e.message}</p>`;
-            }
-        });
-
-        saveSettingsBtn.addEventListener('click', async () => {
-            const proxies = proxyTextarea.value;
-            const enabled = enableProxiesCheckbox.checked;
-            const archive_folder = archiveFolderInput.value;
-            // NEW: Get cookie data
-            const cookie_domain = cookieDomainInput.value;
-            const cookie_name = cookieNameInput.value;
-            const cookie_value = cookieValueInput.value;
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/update-settings`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        proxies, 
-                        enabled, 
-                        archive_folder,
-                        cookie_domain,
-                        cookie_name,
-                        cookie_value 
-                    }),
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    settingsStatusMessage.textContent = data.message;
-                    settingsStatusMessage.className = 'text-sm mt-2 text-green-500';
-                    currentArchiveFolder = archive_folder; 
-                } else {
-                    throw new Error(data.error || 'Failed to save');
-                }
-            } catch (e) {
-                settingsStatusMessage.textContent = e.message;
-                settingsStatusMessage.className = 'text-sm mt-2 text-red-500';
-            }
-        });
-
-        aboutBtn.addEventListener('click', () => aboutModal.classList.remove('hidden'));
-        closeAboutModalBtn.addEventListener('click', () => aboutModal.classList.add('hidden'));
-
-        schedulerBtn.addEventListener('click', () => {
-            schedulerModal.classList.remove('hidden');
-            loadSchedules();
-        });
-        closeSchedulerModalBtn.addEventListener('click', () => schedulerModal.classList.add('hidden'));
-
-        historyBtn.addEventListener('click', async () => {
-             try {
-                const response = await fetch(`${API_BASE_URL}/get-last-results`);
-                const data = await response.json();
-                if (data.domain && data.subdomains) {
-                    currentScanType = 'subdomain';
-                    displayStaticResults(`Saved Results for ${data.domain}`, data.subdomains, "Loaded");
-                    urlInput.value = data.domain; 
-                } else {
-                    errorMessage.textContent = 'No previous results found to load.';
-                    setTimeout(() => errorMessage.textContent = '', 3000);
-                }
-            } catch (e) {
-                console.error("Could not load last results.", e);
-                errorMessage.textContent = 'Error loading previous results.';
-                setTimeout(() => errorMessage.textContent = '', 3000);
-            }
-        });
-        
-        archivesBtn.addEventListener('click', async () => {
-            localArchivesList.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
-            localArchiveModal.classList.remove('hidden');
-            try {
-                const response = await fetch(`${API_BASE_URL}/get-local-archives`);
-                const files = await response.json();
-                if (response.ok) {
-                    if (files.length === 0) {
-                        localArchivesList.innerHTML = '<p class="text-gray-400">No local archives found.</p>';
-                        return;
-                    }
-                    localArchivesList.innerHTML = '';
-                    files.forEach(file => {
-                        const a = document.createElement('a');
-                        a.href = `${API_BASE_URL}/local_archives/${file}`;
-                        a.textContent = file;
-                        a.target = '_blank';
-                        a.className = 'block p-2 text-blue-400 hover:underline hover:bg-gray-700 rounded';
-                        localArchivesList.appendChild(a);
-                    });
-                } else {
-                    throw new Error(files.error || 'Failed to load archives');
-                }
-            } catch (e) {
-                localArchivesList.innerHTML = `<p class="text-red-500">${e.message}</p>`;
-            }
-        });
-        closeLocalArchiveModalBtn.addEventListener('click', () => localArchiveModal.classList.add('hidden'));
-
-
-        saveScheduleBtn.addEventListener('click', async () => {
-            const domain = scheduleDomainInput.value;
-            const startDate = scheduleStartDate.value;
-            const frequency = scheduleFrequency.value;
-
-            if (!domain || !startDate) {
-                scheduleStatusMessage.textContent = 'Please provide a domain and a start date.';
-                scheduleStatusMessage.className = 'text-sm mt-3 text-red-500';
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/schedule-scan`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain, start_date: startDate, frequency }),
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    scheduleStatusMessage.textContent = data.message;
-                    scheduleStatusMessage.className = 'text-sm mt-3 text-green-500';
-                    loadSchedules(); 
-                } else {
-                    throw new Error(data.error || 'Failed to save schedule');
-                }
-            } catch (e) {
-                scheduleStatusMessage.textContent = e.message;
-                scheduleStatusMessage.className = 'text-sm mt-3 text-red-500';
-            }
-        });
-
-        techBtn.addEventListener('click', () => runAnalysis('/detect-tech', 'Technology Stack', { url: urlInput.value }));
-        headersBtn.addEventListener('click', () => runAnalysis('/analyze-headers', 'Security Headers', { url: urlInput.value }));
-        linksBtn.addEventListener('click', () => {
-            if (currentResults.length === 0) {
-                errorMessage.textContent = 'No links found to check. Please run a "Scan Site" first.';
-                setTimeout(() => errorMessage.textContent = '', 3000);
-                return;
-            }
-            const urlsToCheck = currentResults.map(item => typeof item === 'string' ? item : item.name);
-            runAnalysis('/check-links', 'Broken Link Check', { urls: urlsToCheck });
-        });
-        diffMainBtn.addEventListener('click', () => {
-            const url = urlInput.value;
-            if (url) {
-                window.runDiffCheck(url, -1);
-            } else {
-                errorMessage.textContent = 'Please enter a URL in the input box first.';
-            }
-        });
-
-      });
-    </script>
+<body>
+<div class="app">
+<nav class="sidebar">
+<div class="sidebar-logo">
+<svg viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10" stroke-dasharray="3 3"/><path d="M12 6a6 6 0 016 6" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="2" fill="var(--acc)"/></svg>
+</div>
+<button class="nav-btn active" data-page="scan" title="Site Scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></button>
+<button class="nav-btn" data-page="subdomains" title="Subdomains"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></button>
+<button class="nav-btn" data-page="archive" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></button>
+<button class="nav-btn" data-page="tools" title="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></button>
+<button class="nav-btn" data-page="schedules" title="Schedules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+<button class="nav-btn" data-page="investigate" title="Investigate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+<button class="nav-btn" data-page="correlations" title="Correlations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="6" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="7.5" y1="7.5" x2="10.5" y2="16.5"/><line x1="16.5" y1="7.5" x2="13.5" y2="16.5"/><line x1="8" y1="6" x2="16" y2="6"/></svg></button>
+<div class="sidebar-spacer"></div>
+<button class="nav-btn" data-page="settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
+</nav>
+<main class="main">
+
+<!-- SCAN PAGE -->
+<div id="page-scan" class="page active">
+<div class="page-header"><h1 class="page-title">Site Scanner</h1><p class="page-subtitle">Crawl and map websites with configurable depth</p></div>
+<div class="card">
+<div class="input-group">
+<input type="text" id="scan-url" class="url-input" placeholder="https://example.com" spellcheck="false">
+<button class="btn btn-primary" id="btn-scan" onclick="startScan()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>Scan</button>
+<button class="btn btn-danger" id="btn-cancel-scan" onclick="cancelScan()" style="display:none">Cancel</button>
+</div>
+<div class="input-row">
+<span class="input-label">Depth</span>
+<input type="number" id="scan-depth" class="compact-input" value="3" min="1" max="5">
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle" id="toggle-external"></div><span class="toggle-label">Follow external links</span></div>
+</div>
+</div>
+<div id="scan-progress-card" class="card" style="display:none">
+<div class="card-header"><span class="card-title">Scan Progress</span><span class="status-badge badge-running" id="scan-badge"><span class="pulse"></span> Scanning</span></div>
+<div class="progress-bar"><div class="progress-fill" id="scan-progress-fill"></div></div>
+<p class="status-text" id="scan-status-text">Initializing...</p>
+</div>
+<div id="scan-stats" class="stats-row" style="display:none">
+<div class="stat-card"><div class="stat-value stat-accent" id="stat-pages">0</div><div class="stat-label">Pages Crawled</div></div>
+<div class="stat-card"><div class="stat-value stat-green" id="stat-ok">0</div><div class="stat-label">OK (2xx)</div></div>
+<div class="stat-card"><div class="stat-value stat-red" id="stat-errors">0</div><div class="stat-label">Errors</div></div>
+<div class="stat-card"><div class="stat-value stat-blue" id="stat-links">0</div><div class="stat-label">Links Found</div></div>
+</div>
+<div id="scan-actions" class="action-bar" style="display:none;margin-bottom:16px">
+<button class="btn btn-secondary btn-sm" onclick="exportCSV('scan')">Export CSV</button>
+<button class="btn btn-secondary btn-sm" onclick="exportCSV('sitemap')">Generate Sitemap</button>
+<button class="btn btn-secondary btn-sm" onclick="archiveAllScanResults()">Archive All to Archive.org</button>
+</div>
+<div id="scan-results-container" style="display:none">
+<div class="card" style="padding:0;overflow:hidden"><div class="results-scroll">
+<table class="results-table"><thead><tr><th>URL</th><th>Status</th><th>Title</th><th>Size</th><th>Time</th></tr></thead>
+<tbody id="scan-results-body"></tbody></table>
+</div></div>
+</div>
+<div id="scan-empty" class="empty-state">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+<p>Enter a URL above to begin scanning</p>
+</div>
+</div>
+
+<!-- SUBDOMAINS PAGE -->
+<div id="page-subdomains" class="page">
+<div class="page-header"><h1 class="page-title">Subdomain Discovery</h1><p class="page-subtitle">Passive enumeration, wildcard detection, and brute force</p></div>
+<div class="card">
+<div class="input-group">
+<input type="text" id="subdomain-domain" class="url-input" placeholder="example.com" spellcheck="false">
+<button class="btn btn-primary" id="btn-subdomain" onclick="startSubdomainScan()">Discover</button>
+<button class="btn btn-danger" id="btn-cancel-subdomain" onclick="cancelSubdomainScan()" style="display:none">Cancel</button>
+</div>
+</div>
+<div id="subdomain-progress-card" class="card" style="display:none">
+<div class="card-header"><span class="card-title">Discovery Progress</span><span class="status-badge badge-running" id="subdomain-badge"><span class="pulse"></span> Scanning</span></div>
+<div class="progress-bar"><div class="progress-fill" id="subdomain-progress-fill"></div></div>
+<p class="status-text" id="subdomain-status-text">Initializing...</p>
+</div>
+<div id="subdomain-stats" class="stats-row" style="display:none">
+<div class="stat-card"><div class="stat-value stat-accent" id="stat-subdomains">0</div><div class="stat-label">Subdomains Found</div></div>
+<div class="stat-card"><div class="stat-value stat-blue" id="stat-passive">0</div><div class="stat-label">Passive</div></div>
+<div class="stat-card"><div class="stat-value stat-green" id="stat-bruteforce">0</div><div class="stat-label">Brute Force</div></div>
+</div>
+<div id="source-report-card" class="card" style="display:none;margin-bottom:16px">
+<div class="card-header"><span class="card-title">Passive Sources</span></div>
+<div id="source-report-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;padding:4px 0"></div>
+</div>
+<div id="subdomain-actions" class="action-bar" style="display:none;margin-bottom:16px">
+<button class="btn btn-secondary btn-sm" onclick="exportCSV('subdomains')">Export CSV</button>
+</div>
+<div id="subdomain-results-container" style="display:none">
+<div class="card" style="padding:0;overflow:hidden"><div class="results-scroll">
+<table class="results-table"><thead><tr><th>Subdomain</th><th>IP Addresses</th><th>Source</th></tr></thead>
+<tbody id="subdomain-results-body"></tbody></table>
+</div></div>
+</div>
+<div id="subdomain-empty" class="empty-state">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/></svg>
+<p>Enter a domain to discover subdomains</p>
+</div>
+</div>
+
+<!-- ARCHIVE PAGE -->
+<div id="page-archive" class="page">
+<div class="page-header"><h1 class="page-title">Archive</h1><p class="page-subtitle">Save to Archive.org, archive locally, and diff changes</p></div>
+<div class="tabs">
+<button class="tab-btn active" data-tab="archive-save">Save</button>
+<button class="tab-btn" data-tab="archive-diff">Diff</button>
+<button class="tab-btn" data-tab="archive-local">Local Archives</button>
+</div>
+<div id="tab-archive-save" class="tab-content active">
+<div class="card"><div class="card-title" style="margin-bottom:12px">Save to Archive.org</div>
+<div class="input-group"><input type="text" id="archive-url" class="url-input" placeholder="https://example.com/page" spellcheck="false"><button class="btn btn-primary" onclick="saveToArchive()">Archive</button></div>
+<div id="archive-save-result" style="margin-top:12px"></div></div>
+<div class="card"><div class="card-title" style="margin-bottom:12px">Save Locally</div>
+<div class="input-group"><input type="text" id="local-archive-url" class="url-input" placeholder="https://example.com/page" spellcheck="false"><button class="btn btn-primary" onclick="saveLocally()">Save</button></div>
+<div id="local-save-result" style="margin-top:12px"></div></div>
+</div>
+<div id="tab-archive-diff" class="tab-content">
+<div class="card"><div class="card-title" style="margin-bottom:12px">Diff Against Archive.org</div>
+<p style="font-size:.85rem;color:var(--t2);margin-bottom:12px">Compare the current version of a page with its latest archived snapshot.</p>
+<div class="input-group"><input type="text" id="diff-url" class="url-input" placeholder="https://example.com/page" spellcheck="false"><button class="btn btn-primary" id="btn-diff" onclick="runDiff()">Compare</button></div>
+<div id="diff-result"></div></div>
+</div>
+<div id="tab-archive-local" class="tab-content">
+<div class="card"><div class="card-header"><span class="card-title">Local Archives</span><button class="btn btn-secondary btn-sm" onclick="loadLocalArchives()">Refresh</button></div>
+<div id="local-archives-list"><div class="empty-state" style="padding:24px"><p>No local archives yet</p></div></div></div>
+</div>
+</div>
+
+<!-- TOOLS PAGE -->
+<div id="page-tools" class="page">
+<div class="page-header"><h1 class="page-title">Tools</h1><p class="page-subtitle">Quick URL checks, broken link scanner, and security headers</p></div>
+<div class="tabs">
+<button class="tab-btn active" data-tab="tools-check">URL Check</button>
+<button class="tab-btn" data-tab="tools-broken">Broken Links</button>
+<button class="tab-btn" data-tab="tools-headers">Security Headers</button>
+</div>
+<div id="tab-tools-check" class="tab-content active">
+<div class="card"><div class="input-group"><input type="text" id="check-url" class="url-input" placeholder="https://example.com" spellcheck="false"><button class="btn btn-primary" onclick="quickCheckUrl()">Check</button></div>
+<div id="check-result" style="margin-top:12px"></div></div>
+</div>
+<div id="tab-tools-broken" class="tab-content">
+<div class="card"><p style="font-size:.85rem;color:var(--t2);margin-bottom:12px">Check all URLs from the latest scan for broken links (4xx/5xx).</p>
+<button class="btn btn-primary" id="btn-broken" onclick="checkBrokenLinks()">Check Broken Links</button>
+<div id="broken-result" style="margin-top:12px"></div></div>
+</div>
+<div id="tab-tools-headers" class="tab-content">
+<div class="card"><p style="font-size:.85rem;color:var(--t2);margin-bottom:12px">View security headers from the latest scan.</p>
+<div id="headers-result"><div class="empty-state" style="padding:24px"><p>Run a scan first to see security header data</p></div></div></div>
+</div>
+</div>
+
+<!-- SCHEDULES PAGE -->
+<div id="page-schedules" class="page">
+<div class="page-header"><h1 class="page-title">Scheduled Scans</h1><p class="page-subtitle">Automate recurring scans and archival tasks</p></div>
+<div class="card"><div class="card-title" style="margin-bottom:12px">Create Schedule</div>
+<div class="input-group" style="margin-bottom:8px"><input type="text" id="sched-url" class="url-input" placeholder="https://example.com" spellcheck="false"></div>
+<div class="input-row">
+<span class="input-label">Every</span><input type="number" id="sched-interval" class="compact-input" value="24" min="1"><span class="input-label">hours</span>
+<span class="input-label" style="margin-left:12px">Depth</span><input type="number" id="sched-depth" class="compact-input" value="2" min="1" max="5">
+</div>
+<div class="input-row">
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on" id="sched-archive-org"></div><span class="toggle-label">Archive.org</span></div>
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on" id="sched-local"></div><span class="toggle-label">Local archive</span></div>
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on" id="sched-diff"></div><span class="toggle-label">Diff first</span></div>
+</div>
+<button class="btn btn-primary" style="margin-top:12px" onclick="createSchedule()">Create Schedule</button>
+</div>
+<div id="schedules-list"></div>
+</div>
+
+<!-- SETTINGS PAGE -->
+<div id="page-settings" class="page">
+<div class="page-header"><h1 class="page-title">Settings</h1><p class="page-subtitle">Configure scanner behavior</p></div>
+<div class="card"><div class="card-title" style="margin-bottom:16px">Scanner</div>
+<div class="input-row"><span class="input-label" style="width:180px">Default max depth</span><input type="number" id="set-depth" class="compact-input" min="1" max="10"></div>
+<div class="input-row"><span class="input-label" style="width:180px">Threads</span><input type="number" id="set-threads" class="compact-input" min="1" max="50"></div>
+<div class="input-row"><span class="input-label" style="width:180px">Request timeout (sec)</span><input type="number" id="set-timeout" class="compact-input" min="1" max="60"></div>
+<div class="input-row"><span class="input-label" style="width:180px">Delay between requests</span><input type="number" id="set-delay" class="compact-input" min="0" max="10" step="0.1"></div>
+<div class="input-row"><span class="input-label" style="width:180px">User Agent</span><input type="text" id="set-ua" style="flex:1"></div>
+</div>
+<div class="card"><div class="card-title" style="margin-bottom:16px">Proxy</div>
+<div class="input-row">
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle" id="set-proxy-enabled"></div><span class="toggle-label">Enable proxy</span></div>
+<div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle" id="set-proxy-rotate"></div><span class="toggle-label">Rotate proxies</span></div>
+</div>
+</div>
+<button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+</div>
+
+
+<div id="page-investigate" class="page">
+<div class="page-header"><h1 class="page-title">Investigate</h1><p class="page-subtitle">Full OSINT investigation &mdash; WHOIS, DNS, TLS, analytics, technology, social</p></div>
+<div class="card">
+<div class="input-group">
+<input type="text" id="intel-domain" class="url-input" placeholder="example.com" spellcheck="false">
+<button class="btn btn-primary" id="btn-investigate" onclick="startInvestigation()">Investigate</button>
+<button class="btn btn-secondary" id="btn-vuln" onclick="runVulnAssess()">Vuln Scan</button>
+<button class="btn btn-danger" id="btn-cancel-intel" onclick="cancelInvestigation()" style="display:none">Cancel</button>
+</div>
+</div>
+<div id="intel-progress-card" class="card" style="display:none">
+<div class="card-header"><span class="card-title">Investigation Progress</span><span class="status-badge badge-running" id="intel-badge"><span class="pulse"></span> Running</span></div>
+<div class="progress-bar"><div class="progress-fill" id="intel-progress-fill"></div></div>
+<p class="status-text" id="intel-status-text">Initializing...</p>
+<div id="intel-steps" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+</div>
+<div id="intel-results" style="display:none">
+<div id="intel-summary-stats" class="stats-row"></div>
+<div id="intel-sections"></div>
+</div>
+<div id="intel-empty" class="empty-state">
+<p>Enter a domain to begin a full investigation.</p>
+<p style="font-size:.82rem;color:var(--t3);margin-top:4px">Runs WHOIS, DNS enumeration, TLS cert analysis, analytics ID extraction, tech fingerprinting, social/contact scraping, IP analysis, and cross-references everything.</p>
+</div>
+<div id="intel-history" style="margin-top:20px"></div>
+</div>
+
+<div id="page-correlations" class="page">
+<div class="page-header"><h1 class="page-title">Correlations</h1><p class="page-subtitle">Cross-domain relationship graph and attribution signals</p></div>
+<div id="corr-empty" class="empty-state">
+<p>Investigate 2+ domains to see correlations.</p>
+<p style="font-size:.82rem;color:var(--t3);margin-top:4px">The correlation engine cross-references analytics IDs, TLS certificates, WHOIS data, DNS infrastructure, social profiles, and more to find links between domains.</p>
+</div>
+<div id="corr-content" style="display:none">
+<div id="corr-stats" class="stats-row" style="margin-bottom:16px"></div>
+<div class="card" id="corr-graph-card" style="padding:0;overflow:hidden">
+<div class="card-header"><span class="card-title">Relationship Graph</span><button class="btn btn-secondary btn-sm" onclick="refreshCorrelations()">Refresh</button></div>
+<canvas id="corr-canvas" width="900" height="500" style="width:100%;background:var(--bg);cursor:grab"></canvas>
+</div>
+<div id="corr-list" style="margin-top:16px"></div>
+</div>
+</div>
+
+</main>
+</div>
+<div class="toast-container" id="toast-container"></div>
+<script>
+const API='http://127.0.0.1:5000/api';
+async function api(p,o={}){try{const r=await fetch(API+p,{headers:{'Content-Type':'application/json'},...o,body:o.body?JSON.stringify(o.body):undefined});return await r.json()}catch(e){toast('Connection error — is the backend running?','error');throw e}}
+function toast(m,t='info'){const e=document.createElement('div');e.className='toast toast-'+t;e.textContent=m;document.getElementById('toast-container').appendChild(e);setTimeout(()=>e.remove(),4000)}
+document.querySelectorAll('.nav-btn[data-page]').forEach(b=>{b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+b.dataset.page).classList.add('active');if(b.dataset.page==='correlations')refreshCorrelations()})});
+document.querySelectorAll('.tab-btn[data-tab]').forEach(b=>{b.addEventListener('click',()=>{const p=b.closest('.page');p.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));p.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));b.classList.add('active');p.querySelector('#tab-'+b.dataset.tab).classList.add('active')})});
+let scanPoller=null;
+async function startScan(){const u=document.getElementById('scan-url').value.trim();if(!u)return toast('Enter a URL','error');const d=parseInt(document.getElementById('scan-depth').value)||3;const ext=document.getElementById('toggle-external').classList.contains('on');try{await api('/scan/start',{method:'POST',body:{url:u,max_depth:d,follow_external:ext}});document.getElementById('btn-scan').disabled=true;document.getElementById('btn-cancel-scan').style.display='';document.getElementById('scan-progress-card').style.display='';document.getElementById('scan-empty').style.display='none';scanPoller=setInterval(pollScan,800)}catch(e){}}
+async function pollScan(){try{const s=await api('/scan/status');const p=s.total>0?Math.round(s.progress/s.total*100):0;document.getElementById('scan-progress-fill').style.width=p+'%';document.getElementById('scan-status-text').textContent=s.progress+'/'+s.total+' pages — '+(s.current_url||'');const b=document.getElementById('scan-badge');if(s.status==='complete'){b.className='status-badge badge-complete';b.innerHTML='Complete'}else if(s.status==='cancelled'){b.className='status-badge badge-error';b.innerHTML='Cancelled'}if(!s.active){clearInterval(scanPoller);scanPoller=null;document.getElementById('btn-scan').disabled=false;document.getElementById('btn-cancel-scan').style.display='none';loadScanResults()}}catch(e){}}
+async function loadScanResults(){try{const d=await api('/scan/results');const r=d.results||[];if(!r.length)return;document.getElementById('scan-stats').style.display='';document.getElementById('scan-actions').style.display='';document.getElementById('scan-results-container').style.display='';const ok=r.filter(x=>x.status_code>=200&&x.status_code<300).length;const er=r.filter(x=>x.error||(x.status_code&&x.status_code>=400)).length;const tl=r.reduce((s,x)=>s+(x.links?x.links.length:0),0);document.getElementById('stat-pages').textContent=r.length;document.getElementById('stat-ok').textContent=ok;document.getElementById('stat-errors').textContent=er;document.getElementById('stat-links').textContent=tl;const tb=document.getElementById('scan-results-body');tb.innerHTML=r.map(x=>{const sc=x.status_code;let c='status-err';if(sc>=200&&sc<300)c='status-2xx';else if(sc>=300&&sc<400)c='status-3xx';else if(sc>=400&&sc<500)c='status-4xx';else if(sc>=500)c='status-5xx';const sz=x.size>1024?(x.size/1024).toFixed(1)+' KB':(x.size||0)+' B';return '<tr><td class="url-cell"><a href="'+x.url+'" target="_blank">'+trunc(x.url,60)+'</a></td><td><span class="status-pill '+c+'">'+(x.error||sc||'?')+'</span></td><td>'+(x.title||'—')+'</td><td>'+sz+'</td><td>'+(x.response_time?x.response_time+' ms':'—')+'</td></tr>'}).join('');updateSecHeaders(r)}catch(e){}}
+function updateSecHeaders(r){const f=r.find(x=>x.status_code===200&&x.security_headers);if(!f)return;const c=document.getElementById('headers-result');const h=f.security_headers;c.innerHTML='<div class="header-grid">'+Object.entries(h).map(([n,i])=>'<div class="header-item"><span class="header-dot '+(i.present?'present':'missing')+'"></span><span style="color:'+(i.present?'var(--t1)':'var(--t3)')+'">'+n+'</span></div>').join('')+'</div>'}
+async function cancelScan(){await api('/scan/cancel',{method:'POST'});toast('Scan cancellation requested','info')}
+let subPoller=null;
+async function startSubdomainScan(){const d=document.getElementById('subdomain-domain').value.trim();if(!d)return toast('Enter a domain','error');try{await api('/subdomains/start',{method:'POST',body:{domain:d}});document.getElementById('btn-subdomain').disabled=true;document.getElementById('btn-cancel-subdomain').style.display='';document.getElementById('subdomain-progress-card').style.display='';document.getElementById('subdomain-empty').style.display='none';subPoller=setInterval(pollSubs,1000)}catch(e){}}
+async function pollSubs(){try{const s=await api('/subdomains/status');const p=s.total>0?Math.round(s.progress/s.total*100):0;document.getElementById('subdomain-progress-fill').style.width=p+'%';document.getElementById('subdomain-status-text').textContent=s.status+' — '+s.result_count+' found ('+s.progress+'/'+s.total+')';if(s.source_report&&Object.keys(s.source_report).length){renderSourceReport(s.source_report)};if(!s.active){const b=document.getElementById('subdomain-badge');b.className='status-badge badge-complete';b.innerHTML='Complete';clearInterval(subPoller);subPoller=null;document.getElementById('btn-subdomain').disabled=false;document.getElementById('btn-cancel-subdomain').style.display='none';loadSubResults()}}catch(e){}}
+function renderSourceReport(sr){var el=document.getElementById("source-report-card");el.style.display="";var body=document.getElementById("source-report-body");body.innerHTML=Object.entries(sr).map(function(e){var name=e[0],info=e[1];var icon=info.ok?"<span style=\"color:var(--grn)\">\u2714</span>":"<span style=\"color:var(--red)\">\u2718</span>";var detail=info.ok?info.count+" found"+(info.new>0?" ("+info.new+" new)":""):"<span style=\"color:var(--t3);font-style:italic\">"+(info.error||"failed").substring(0,40)+"</span>";return "<div style=\"display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--s1);border-radius:6px;font-size:.82rem\">"+icon+"<span style=\"color:var(--t1);font-weight:500\">"+name+"</span><span style=\"margin-left:auto;color:var(--t2)\">"+detail+"</span></div>"}).join("")}
+async function loadSubResults(){try{const d=await api('/subdomains/results');const r=d.results||[];if(!r.length)return;document.getElementById('subdomain-stats').style.display='';document.getElementById('subdomain-actions').style.display='';document.getElementById('subdomain-results-container').style.display='';document.getElementById('stat-subdomains').textContent=r.length;document.getElementById('stat-passive').textContent=r.filter(x=>x.source==='passive').length;document.getElementById('stat-bruteforce').textContent=r.filter(x=>x.source==='bruteforce').length;if(d.source_report)renderSourceReport(d.source_report);document.getElementById('subdomain-results-body').innerHTML=r.map(x=>'<tr><td class="url-cell">'+x.subdomain+'</td><td>'+(x.ips||[]).join(', ')+'</td><td><span class="status-pill '+(x.source==='passive'?'status-3xx':'status-2xx')+'">'+x.source+'</span></td></tr>').join('')}catch(e){}}
+async function cancelSubdomainScan(){await api('/subdomains/cancel',{method:'POST'});toast('Cancellation requested','info')}
+async function saveToArchive(){const u=document.getElementById('archive-url').value.trim();if(!u)return toast('Enter a URL','error');const e=document.getElementById('archive-save-result');e.innerHTML='<span class="spinner"></span> Saving to Archive.org...';try{const d=await api('/archive/save',{method:'POST',body:{urls:[u]}});const r=d.results[0];e.innerHTML=r.success?'<div style="color:var(--grn)">Saved! <a href="'+r.archive_url+'" target="_blank" style="color:var(--blu)">'+trunc(r.archive_url,60)+'</a></div>':'<div style="color:var(--red)">Failed: '+r.error+'</div>'}catch(x){e.innerHTML=''}}
+async function saveLocally(){const u=document.getElementById('local-archive-url').value.trim();if(!u)return toast('Enter a URL','error');const e=document.getElementById('local-save-result');e.innerHTML='<span class="spinner"></span> Saving locally...';try{const d=await api('/archive/local',{method:'POST',body:{urls:[u]}});const r=d.results[0];e.innerHTML=r.success?'<div style="color:var(--grn)">Saved: '+r.filename+' ('+(r.size/1024).toFixed(1)+' KB)</div>':'<div style="color:var(--red)">Failed: '+r.error+'</div>'}catch(x){e.innerHTML=''}}
+async function runDiff(){const u=document.getElementById('diff-url').value.trim();if(!u)return toast('Enter a URL','error');const e=document.getElementById('diff-result');document.getElementById('btn-diff').disabled=true;e.innerHTML='<div style="margin-top:12px"><span class="spinner"></span> Comparing...</div>';try{const d=await api('/archive/diff',{method:'POST',body:{url:u}});if(d.error){e.innerHTML='<div class="diff-result diff-none">Error: '+d.error+'</div>'}else if(d.has_diff===null){e.innerHTML='<div class="diff-result diff-none">'+d.message+'</div>'}else if(d.has_diff){e.innerHTML='<div class="diff-result diff-changed"><strong style="color:var(--org)">Changes detected</strong> since '+(d.snapshot_date||'last archive')+'<div style="margin-top:6px;font-size:.85rem;color:var(--t2)">+'+d.lines_added+' added, -'+d.lines_removed+' removed</div><div class="diff-lines">'+(d.sample_added||[]).map(l=>'<div class="diff-added">'+esc(trunc(l,100))+'</div>').join('')+(d.sample_removed||[]).map(l=>'<div class="diff-removed">'+esc(trunc(l,100))+'</div>').join('')+'</div></div>'}else{e.innerHTML='<div class="diff-result diff-same"><strong style="color:var(--grn)">No changes</strong> — matches latest archived version</div>'}}catch(x){e.innerHTML=''}document.getElementById('btn-diff').disabled=false}
+async function archiveAllScanResults(){try{const d=await api('/scan/results');const u=(d.results||[]).filter(r=>r.status_code===200).map(r=>r.url);if(!u.length)return toast('No pages to archive','error');toast('Archiving '+u.length+' pages...','info');await api('/archive/save',{method:'POST',body:{urls:u}});toast('Archived '+u.length+' pages','success')}catch(e){}}
+async function loadLocalArchives(){try{const d=await api('/archive/local/list');const f=d.files||[];const e=document.getElementById('local-archives-list');if(!f.length){e.innerHTML='<div class="empty-state" style="padding:24px"><p>No local archives yet</p></div>';return}e.innerHTML='<div class="results-scroll" style="max-height:400px"><table class="results-table"><thead><tr><th>Filename</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody>'+f.map(x=>'<tr><td>'+x.filename+'</td><td>'+(x.size/1024).toFixed(1)+' KB</td><td>'+new Date(x.created).toLocaleString()+'</td><td><a href="'+API+'/archive/local/'+x.filename+'" class="btn btn-secondary btn-sm" download>Download</a></td></tr>').join('')+'</tbody></table></div>'}catch(e){}}
+async function quickCheckUrl(){const u=document.getElementById('check-url').value.trim();if(!u)return toast('Enter a URL','error');const e=document.getElementById('check-result');e.innerHTML='<span class="spinner"></span> Checking...';try{const r=await api('/tools/check-url',{method:'POST',body:{url:u}});const sc=r.status_code;let c='status-err';if(sc>=200&&sc<300)c='status-2xx';else if(sc>=300&&sc<400)c='status-3xx';else if(sc>=400&&sc<500)c='status-4xx';else if(sc>=500)c='status-5xx';e.innerHTML='<div class="card" style="margin-top:0"><div style="display:flex;gap:12px;align-items:center;margin-bottom:12px"><span class="status-pill '+c+'" style="font-size:1.1rem;padding:4px 12px">'+(r.error||sc)+'</span><span style="color:var(--t2)">'+(r.title||'—')+'</span><span style="color:var(--t3);font-size:.82rem">'+(r.response_time?r.response_time+' ms':'')+'</span></div>'+(r.security_headers?'<div class="header-grid">'+Object.entries(r.security_headers).map(([n,i])=>'<div class="header-item"><span class="header-dot '+(i.present?'present':'missing')+'"></span><span style="color:'+(i.present?'var(--t1)':'var(--t3)')+';font-size:.78rem">'+n+'</span></div>').join('')+'</div>':'')+'</div>'}catch(x){e.innerHTML=''}}
+async function checkBrokenLinks(){const e=document.getElementById('broken-result');document.getElementById('btn-broken').disabled=true;e.innerHTML='<span class="spinner"></span> Checking...';try{const d=await api('/tools/broken-links',{method:'POST',body:{}});const br=(d.results||[]).filter(r=>r.broken);e.innerHTML='<div style="margin-top:12px"><div class="stats-row"><div class="stat-card"><div class="stat-value stat-accent">'+d.total+'</div><div class="stat-label">Checked</div></div><div class="stat-card"><div class="stat-value stat-red">'+d.broken_count+'</div><div class="stat-label">Broken</div></div></div>'+(br.length?'<div class="results-scroll" style="max-height:300px"><table class="results-table"><thead><tr><th>URL</th><th>Status</th></tr></thead><tbody>'+br.map(r=>'<tr><td class="url-cell">'+trunc(r.url,60)+'</td><td><span class="status-pill status-err">'+(r.status_code||'Error')+'</span></td></tr>').join('')+'</tbody></table></div>':'<p style="color:var(--grn);margin-top:8px">No broken links found!</p>')+'</div>'}catch(x){e.innerHTML=''}document.getElementById('btn-broken').disabled=false}
+async function exportCSV(t){try{const d=await api('/export/csv',{method:'POST',body:{type:t}});if(d.error)return toast(d.error,'error');window.open(API+d.download,'_blank');toast('Exported: '+d.filename,'success')}catch(e){}}
+async function createSchedule(){const u=document.getElementById('sched-url').value.trim();if(!u)return toast('Enter a URL','error');await api('/schedules',{method:'POST',body:{url:u,interval_hours:parseInt(document.getElementById('sched-interval').value)||24,max_depth:parseInt(document.getElementById('sched-depth').value)||2,archive_to_org:document.getElementById('sched-archive-org').classList.contains('on'),archive_local:document.getElementById('sched-local').classList.contains('on'),diff_before_archive:document.getElementById('sched-diff').classList.contains('on')}});toast('Schedule created','success');loadSchedules()}
+async function loadSchedules(){try{const d=await api('/schedules');const s=d.schedules||[];const e=document.getElementById('schedules-list');if(!s.length){e.innerHTML='<div class="empty-state"><p>No schedules yet</p></div>';return}e.innerHTML=s.map(x=>'<div class="card" style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--m);font-size:.85rem;color:var(--blu)">'+x.url+'</div><div style="font-size:.8rem;color:var(--t3);margin-top:4px">Every '+x.interval_hours+'h • Depth '+x.max_depth+(x.archive_to_org?' • Archive.org':'')+(x.archive_local?' • Local':'')+(x.diff_before_archive?' • Diff':'')+'</div></div><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="toggleSched(\''+x.id+'\')">'+(x.enabled?'Disable':'Enable')+'</button><button class="btn btn-danger btn-sm" onclick="deleteSched(\''+x.id+'\')">Delete</button></div></div>').join('')}catch(e){}}
+async function toggleSched(id){await api('/schedules/'+id+'/toggle',{method:'POST'});loadSchedules()}
+async function deleteSched(id){await api('/schedules/'+id,{method:'DELETE'});toast('Deleted','info');loadSchedules()}
+async function loadSettingsUI(){try{const s=await api('/settings');document.getElementById('set-depth').value=s.max_depth;document.getElementById('set-threads').value=s.max_threads;document.getElementById('set-timeout').value=s.request_timeout;document.getElementById('set-delay').value=s.delay_between_requests;document.getElementById('set-ua').value=s.user_agent;if(s.proxy_enabled)document.getElementById('set-proxy-enabled').classList.add('on');if(s.proxy_rotate)document.getElementById('set-proxy-rotate').classList.add('on')}catch(e){}}
+async function saveSettings(){await api('/settings',{method:'POST',body:{max_depth:parseInt(document.getElementById('set-depth').value),max_threads:parseInt(document.getElementById('set-threads').value),request_timeout:parseInt(document.getElementById('set-timeout').value),delay_between_requests:parseFloat(document.getElementById('set-delay').value),user_agent:document.getElementById('set-ua').value,proxy_enabled:document.getElementById('set-proxy-enabled').classList.contains('on'),proxy_rotate:document.getElementById('set-proxy-rotate').classList.contains('on')}});toast('Settings saved','success')}
+function trunc(s,n){return s&&s.length>n?s.slice(0,n)+'…':(s||'')}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.getElementById('scan-url').addEventListener('keydown',e=>{if(e.key==='Enter')startScan()});
+document.getElementById('subdomain-domain').addEventListener('keydown',e=>{if(e.key==='Enter')startSubdomainScan()});
+document.getElementById('check-url').addEventListener('keydown',e=>{if(e.key==='Enter')quickCheckUrl()});
+loadSettingsUI();loadSchedules();
+
+let intelPoller=null;
+async function startInvestigation(){const d=document.getElementById('intel-domain').value.trim();if(!d)return toast('Enter a domain','error');try{await api('/intel/investigate',{method:'POST',body:{domain:d}});document.getElementById('btn-investigate').disabled=true;document.getElementById('btn-cancel-intel').style.display='';document.getElementById('intel-progress-card').style.display='';document.getElementById('intel-empty').style.display='none';document.getElementById('intel-results').style.display='none';intelPoller=setInterval(pollIntel,800)}catch(e){toast(e.message||'Failed','error')}}
+async function pollIntel(){try{const s=await api('/intel/status');const p=s.total>0?Math.round(s.progress/s.total*100):0;document.getElementById('intel-progress-fill').style.width=p+'%';document.getElementById('intel-status-text').textContent=s.status;var stepsEl=document.getElementById('intel-steps');stepsEl.innerHTML=(s.steps_completed||[]).map(function(st){return '<span class="intel-tag intel-tag-green">\u2714 '+st.split('&')[0].substring(0,20)+'</span>'}).join('');if(!s.active){clearInterval(intelPoller);intelPoller=null;document.getElementById('btn-investigate').disabled=false;document.getElementById('btn-cancel-intel').style.display='none';var b=document.getElementById('intel-badge');b.className='status-badge badge-complete';b.innerHTML='Complete';loadIntelResults(s.domain);loadIntelHistory()}}catch(e){}}
+async function cancelInvestigation(){await api('/intel/cancel',{method:'POST'});toast('Cancelling...','info')}
+async function loadIntelResults(domain){try{const d=await api('/intel/results/'+encodeURIComponent(domain));document.getElementById('intel-results').style.display='';var html='';
+if(d.analytics&&Object.keys(d.analytics).length){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udcca Tracking & Analytics IDs</span><span class="intel-tag intel-tag-gold">STRONGEST SIGNAL</span></div>';for(var p in d.analytics){html+='<div class="intel-item"><span class="intel-key">'+p+'</span><span class="intel-val" style="font-family:var(--m)">'+d.analytics[p].join(', ')+'</span></div>'}html+='</div></div>'}
+if(d.tls&&!d.tls.error){var t=d.tls;html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udd12 TLS Certificate</span></div>';html+='<div class="intel-item"><span class="intel-key">Subject</span><span class="intel-val">'+esc(t.common_name||'')+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Organization</span><span class="intel-val">'+(t.organization||'<span style="color:var(--t3)">N/A (DV cert)</span>')+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Issuer</span><span class="intel-val">'+esc(t.issuer_cn||'')+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Valid</span><span class="intel-val">'+esc((t.not_before||'')+' to '+(t.not_after||''))+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Cert SHA256</span><span class="intel-val" style="font-family:var(--m);font-size:.72rem">'+esc((t.cert_sha256||'').substring(0,40))+'...</span></div>';if(t.pubkey_sha256){html+='<div class="intel-item"><span class="intel-key">PubKey SHA256</span><span class="intel-val" style="font-family:var(--m);font-size:.72rem">'+esc(t.pubkey_sha256.substring(0,40))+'...</span></div>'}if(t.san_domains&&t.san_domains.length){html+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--s1)"><span class="intel-key">SAN Domains ('+t.san_domains.length+')</span><div style="margin-top:4px">'+t.san_domains.map(function(s){return '<span class="intel-tag intel-tag-blue">'+esc(s)+'</span>'}).join('')+'</div></div>'}html+='</div></div>'}
+if(d.whois&&!d.whois.error){var w=d.whois;html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udcdd WHOIS Registration</span></div>';html+='<div class="intel-item"><span class="intel-key">Registrar</span><span class="intel-val">'+esc(w.registrar||'')+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Created</span><span class="intel-val">'+esc(w.creation_date||'')+'</span></div>';html+='<div class="intel-item"><span class="intel-key">Expires</span><span class="intel-val">'+esc(w.expiration_date||'')+'</span></div>';var reg=w.registrant||{};if(reg.org)html+='<div class="intel-item"><span class="intel-key">Organization</span><span class="intel-val">'+esc(reg.org)+'</span></div>';if(reg.name)html+='<div class="intel-item"><span class="intel-key">Name</span><span class="intel-val">'+esc(reg.name)+'</span></div>';if(reg.email)html+='<div class="intel-item"><span class="intel-key">Email</span><span class="intel-val">'+esc(reg.email)+'</span></div>';if(reg.country)html+='<div class="intel-item"><span class="intel-key">Country</span><span class="intel-val">'+esc(reg.country)+'</span></div>';if(w.name_servers&&w.name_servers.length){html+='<div class="intel-item"><span class="intel-key">Nameservers</span><span class="intel-val">'+w.name_servers.map(esc).join(', ')+'</span></div>'}html+='</div></div>'}else if(d.whois&&d.whois.error){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">WHOIS</span><span class="intel-tag intel-tag-red">Error</span></div><p style="color:var(--t3);font-size:.82rem">'+esc(d.whois.error)+'</p></div></div>'}
+if(d.dns&&!d.dns.error){var dns=d.dns;html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83c\udf10 DNS Records</span></div>';var recs=dns.records||{};for(var rtype in recs){html+='<div class="intel-item"><span class="intel-key">'+rtype+'</span><span class="intel-val" style="font-family:var(--m);font-size:.78rem">'+recs[rtype].map(esc).join('<br>')+'</span></div>'}var infra=dns.infrastructure||{};if(infra.cdn_detected){html+='<div class="intel-item"><span class="intel-key">CDN</span><span class="intel-val"><span class="intel-tag intel-tag-blue">'+esc(infra.cdn_detected)+'</span></span></div>'}if(infra.spf_includes&&infra.spf_includes.length){html+='<div class="intel-item"><span class="intel-key">SPF Includes</span><span class="intel-val">'+infra.spf_includes.map(esc).join(', ')+'</span></div>'}html+='</div></div>'}
+if(d.ip_analysis&&d.ip_analysis.length){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udda5\ufe0f IP & Hosting</span></div>';d.ip_analysis.forEach(function(ip){html+='<div style="padding:8px 0;border-bottom:1px solid var(--s1)">';html+='<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:var(--m);color:var(--blu)">'+esc(ip.ip)+'</span>';if(ip.asn)html+='<span class="intel-tag intel-tag-blue">'+esc(ip.asn)+'</span>';html+='</div>';if(ip.org)html+='<div class="intel-item"><span class="intel-key">Org</span><span class="intel-val">'+esc(ip.org)+'</span></div>';if(ip.isp)html+='<div class="intel-item"><span class="intel-key">ISP</span><span class="intel-val">'+esc(ip.isp)+'</span></div>';if(ip.geo)html+='<div class="intel-item"><span class="intel-key">Location</span><span class="intel-val">'+esc([ip.geo.city,ip.geo.region,ip.geo.country].filter(Boolean).join(', '))+'</span></div>';if(ip.reverse_count)html+='<div class="intel-item"><span class="intel-key">Shared Hosting</span><span class="intel-val">'+ip.reverse_count+' other domains on this IP</span></div>';html+='</div>'});html+='</div></div>'}
+if(d.tech&&Object.keys(d.tech).length){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\u2699\ufe0f Technology Stack</span></div><div style="display:flex;flex-wrap:wrap;gap:4px">';for(var tn in d.tech){html+='<span class="intel-tag intel-tag-blue">'+esc(tn)+(d.tech[tn]?' '+esc(d.tech[tn]):'')+'</span>'}html+='</div></div></div>'}
+if(d.social){var soc=d.social;if((soc.social&&Object.keys(soc.social).length)||(soc.emails&&soc.emails.length)){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udcf1 Social & Contact</span></div>';if(soc.social){for(var pl in soc.social){html+='<div class="intel-item"><span class="intel-key">'+esc(pl)+'</span><span class="intel-val">'+soc.social[pl].map(function(h){return '@'+esc(h)}).join(', ')+'</span></div>'}}if(soc.emails&&soc.emails.length){html+='<div class="intel-item"><span class="intel-key">Emails</span><span class="intel-val">'+soc.emails.map(esc).join(', ')+'</span></div>'}if(soc.phones&&soc.phones.length){html+='<div class="intel-item"><span class="intel-key">Phones</span><span class="intel-val">'+soc.phones.map(esc).join(', ')+'</span></div>'}html+='</div></div>'}}
+if(d.ct_related){var ct=d.ct_related;if(ct.related_root_domains&&ct.related_root_domains.length){html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\ud83d\udd17 Related Root Domains (from TLS SANs)</span></div><div style="display:flex;flex-wrap:wrap;gap:4px">'+ct.related_root_domains.map(function(r){return '<span class="intel-tag intel-tag-gold" style="cursor:pointer" data-investigate-domain="'+esc(r)+'">'+esc(r)+'</span>'}).join('')+'</div></div></div>'}}
+
+if(d.vuln_assessment&&!d.vuln_assessment.error){var va=d.vuln_assessment;var gC=va.overall_grade==='A+'||va.overall_grade==='A'?'var(--grn)':va.overall_grade==='B'?'var(--blu)':va.overall_grade==='C'?'var(--acc)':'var(--red)';
+html+='<div class="intel-section"><div class="card"><div class="card-header"><span class="card-title">\u26a0\ufe0f Vulnerability Assessment</span><span style="font-size:1.5rem;font-weight:700;color:'+gC+'">'+esc(va.overall_grade)+'</span></div>';
+html+='<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">';
+var sv=va.summary||{};
+if(sv.critical)html+='<span class="intel-tag intel-tag-red" style="font-size:.82rem">\u2622 '+sv.critical+' Critical</span>';
+if(sv.high)html+='<span class="intel-tag" style="background:rgba(251,146,60,.15);color:#fb923c;font-size:.82rem">'+sv.high+' High</span>';
+if(sv.medium)html+='<span class="intel-tag intel-tag-gold" style="font-size:.82rem">'+sv.medium+' Medium</span>';
+if(sv.low)html+='<span class="intel-tag intel-tag-blue" style="font-size:.82rem">'+sv.low+' Low</span>';
+if(sv.info)html+='<span class="intel-tag intel-tag-green" style="font-size:.82rem">'+sv.info+' Info</span>';
+html+='</div>';
+
+html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">';
+var hg=va.header_grade;if(hg){var hgC=hg.grade.startsWith('A')?'var(--grn)':hg.grade==='B'?'var(--blu)':hg.grade==='C'?'var(--acc)':'var(--red)';html+='<div style="background:var(--s0);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:.75rem;color:var(--t3);margin-bottom:4px">Header Grade</div><div style="font-size:1.6rem;font-weight:700;color:'+hgC+'">'+esc(hg.grade)+'</div><div style="font-size:.72rem;color:var(--t3)">'+hg.score+'% score</div></div>'}
+var tg=va.tls_grade;if(tg&&!tg.error){var tgC=tg.grade.startsWith('A')?'var(--grn)':tg.grade==='B'?'var(--blu)':tg.grade==='C'?'var(--acc)':'var(--red)';html+='<div style="background:var(--s0);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:.75rem;color:var(--t3);margin-bottom:4px">TLS Grade</div><div style="font-size:1.6rem;font-weight:700;color:'+tgC+'">'+esc(tg.grade)+'</div><div style="font-size:.72rem;color:var(--t3)">'+(tg.protocols||[]).join(', ')+'</div></div>'}
+if(tg&&tg.cipher&&tg.cipher.name){html+='<div style="background:var(--s0);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:.75rem;color:var(--t3);margin-bottom:4px">Cipher Suite</div><div style="font-size:.85rem;font-family:var(--m);color:var(--t1);margin-top:8px">'+esc(tg.cipher.name)+'</div><div style="font-size:.72rem;color:var(--t3)">'+tg.cipher.bits+'-bit</div></div>'}
+html+='</div>';
+
+if(va.exposed_paths&&va.exposed_paths.length){html+='<div style="margin-bottom:16px"><div style="font-weight:600;color:var(--t1);margin-bottom:8px;font-size:.88rem">\ud83d\udcc2 Exposed Paths ('+va.exposed_paths.length+')</div>';
+va.exposed_paths.forEach(function(ep){var sc=ep.severity==='critical'||ep.severity==='high'?'intel-tag-red':ep.severity==='medium'?'intel-tag-gold':ep.severity==='info'?'intel-tag-green':'intel-tag-blue';
+html+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:4px;background:var(--s0);border-radius:var(--r);font-size:.82rem"><span class="intel-tag '+sc+'" style="min-width:60px;text-align:center;text-transform:uppercase">'+esc(ep.severity)+'</span><div style="flex:1"><span style="font-family:var(--m);color:var(--blu)">'+esc(ep.path)+'</span><div style="color:var(--t3);margin-top:2px">'+esc(ep.description)+'</div></div><span style="color:var(--t3);font-family:var(--m);font-size:.75rem">HTTP '+ep.status_code+'</span></div>'});
+html+='</div>'}
+
+if(va.eol_findings&&va.eol_findings.length){html+='<div style="margin-bottom:16px"><div style="font-weight:600;color:var(--t1);margin-bottom:8px;font-size:.88rem">\u23f3 End-of-Life Software ('+va.eol_findings.length+')</div>';
+va.eol_findings.forEach(function(ef){html+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:4px;background:var(--s0);border-radius:var(--r);font-size:.82rem"><span class="intel-tag intel-tag-red" style="min-width:60px;text-align:center">EOL</span><div style="flex:1"><span style="color:var(--t1);font-weight:500">'+esc(ef.technology)+' '+esc(ef.version)+'</span><div style="color:var(--t3);margin-top:2px">'+esc(ef.description)+'</div></div></div>'});
+html+='</div>'}
+
+if(va.cve_results&&Object.keys(va.cve_results).length){html+='<div style="margin-bottom:16px"><div style="font-weight:600;color:var(--t1);margin-bottom:8px;font-size:.88rem">\ud83d\udd13 Known CVEs</div>';
+for(var tech in va.cve_results){html+='<div style="font-size:.82rem;color:var(--acc);margin:8px 0 6px;font-weight:600">'+esc(tech)+' ('+va.cve_results[tech].length+' CVEs)</div>';
+va.cve_results[tech].forEach(function(cve){if(cve.error)return;var cvC=cve.cvss_score>=9?'intel-tag-red':cve.cvss_score>=7?'intel-tag-red':cve.cvss_score>=4?'intel-tag-gold':'intel-tag-blue';
+html+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:4px;background:var(--s0);border-radius:var(--r);font-size:.78rem"><span class="intel-tag '+cvC+'" style="min-width:72px;text-align:center">'+(cve.cvss_score||'?')+' '+(cve.severity||'')+'</span><div style="flex:1"><a href="'+esc(cve.url)+'" target="_blank" rel="noopener" style="color:var(--blu);font-family:var(--m);font-weight:500">'+esc(cve.cve_id)+'</a><span style="color:var(--t3);margin-left:6px">'+esc(cve.published||'')+'</span><div style="color:var(--t2);margin-top:3px;line-height:1.4">'+esc((cve.description||'').substring(0,250))+'</div></div></div>'})}
+html+='</div>'}
+
+if(hg&&hg.findings&&hg.findings.length){html+='<div style="margin-bottom:16px"><div style="font-weight:600;color:var(--t1);margin-bottom:8px;font-size:.88rem">\ud83d\udee1\ufe0f Security Header Findings ('+hg.findings.length+')</div>';
+hg.findings.forEach(function(hf){var hfc=hf.severity==='high'?'intel-tag-red':hf.severity==='medium'?'intel-tag-gold':'intel-tag-blue';
+html+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:4px;background:var(--s0);border-radius:var(--r);font-size:.82rem"><span class="intel-tag '+hfc+'" style="min-width:60px;text-align:center;text-transform:uppercase">'+esc(hf.severity)+'</span><div style="flex:1"><span style="color:var(--t1);font-weight:500;font-family:var(--m)">'+esc(hf.header)+'</span><div style="color:var(--t3);margin-top:2px">'+esc(hf.finding)+'</div>'+(hf.value?'<div style="color:var(--t3);font-family:var(--m);font-size:.72rem;margin-top:2px;opacity:.7">Current: '+esc(String(hf.value).substring(0,120))+'</div>':'')+'</div></div>'});
+if(hg.missing&&hg.missing.length){html+='<div style="margin-top:8px;padding:8px;background:var(--s0);border-radius:var(--r);font-size:.78rem"><span style="color:var(--t3)">Missing headers: </span><span style="font-family:var(--m);color:var(--t2)">'+hg.missing.map(esc).join(', ')+'</span></div>'}
+html+='</div>'}
+
+if(tg&&!tg.error){var allTlsFindings=(tg.findings||[]).concat(tg.cert_issues||[]);if(allTlsFindings.length){html+='<div style="margin-bottom:16px"><div style="font-weight:600;color:var(--t1);margin-bottom:8px;font-size:.88rem">\ud83d\udd10 TLS Findings ('+allTlsFindings.length+')</div>';
+allTlsFindings.forEach(function(tf){var tfc=tf.severity==='critical'||tf.severity==='high'?'intel-tag-red':tf.severity==='medium'?'intel-tag-gold':'intel-tag-blue';
+html+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px;margin-bottom:4px;background:var(--s0);border-radius:var(--r);font-size:.82rem"><span class="intel-tag '+tfc+'" style="min-width:60px;text-align:center;text-transform:uppercase">'+esc(tf.severity)+'</span><div style="flex:1"><span style="color:var(--t1)">'+esc(tf.finding)+'</span>'+(tf.recommendation?'<div style="color:var(--grn);margin-top:2px;font-size:.78rem">\u2192 '+esc(tf.recommendation)+'</div>':'')+'</div></div>'});
+html+='</div>'}}
+
+html+='</div></div>'}
+
+document.getElementById('intel-sections').innerHTML=html||'<div class="empty-state"><p>No data collected</p></div>';document.querySelectorAll("[data-investigate-domain]").forEach(function(el){el.addEventListener("click",function(){document.getElementById("intel-domain").value=this.dataset.investigateDomain;startInvestigation()})});
+var statCount=0;if(d.analytics)statCount+=Object.keys(d.analytics).length;var catsDone=['whois','dns','tls','tech','social','ip_analysis'].filter(function(c){return d[c]&&!d[c].error}).length;
+document.getElementById('intel-summary-stats').innerHTML='<div class="stat-card"><div class="stat-value stat-accent">'+catsDone+'</div><div class="stat-label">Intel Categories</div></div><div class="stat-card"><div class="stat-value stat-blue">'+statCount+'</div><div class="stat-label">Tracking IDs</div></div><div class="stat-card"><div class="stat-value stat-green">'+(d.tech?Object.keys(d.tech).length:0)+'</div><div class="stat-label">Technologies</div></div>'}catch(e){console.error(e)}}
+async function loadIntelHistory(){try{const d=await api("/intel/domains");var el=document.getElementById("intel-history");if(!d.domains||!d.domains.length){el.innerHTML="";return}var items="";d.domains.forEach(function(dom){items+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--s1)"><div><span style="font-family:var(--m);color:var(--blu);cursor:pointer" data-view-domain="'+dom.domain+'">'+esc(dom.domain)+'</span><span style="color:var(--t3);font-size:.78rem;margin-left:8px">'+dom.categories.length+' categories</span></div><button class="btn btn-secondary btn-sm" data-remove-domain="'+dom.domain+'">Remove</button></div>'});el.innerHTML='<div class="card"><div class="card-header"><span class="card-title">Investigated Domains</span><button class="btn btn-danger btn-sm" onclick="clearAllIntel()">Clear All</button></div>'+items+'</div>';el.querySelectorAll("[data-view-domain]").forEach(function(btn){btn.addEventListener("click",function(){loadIntelResults(this.dataset.viewDomain);document.getElementById("intel-results").style.display=""})});el.querySelectorAll("[data-remove-domain]").forEach(function(btn){btn.addEventListener("click",function(){removeIntel(this.dataset.removeDomain)})})}catch(e){}}
+async function clearAllIntel(){await api('/intel/clear',{method:'POST'});toast('Intel cleared','info');async function runVulnAssess(){var d=document.getElementById('intel-domain').value.trim();if(!d)return toast('Enter a domain','error');document.getElementById('btn-vuln').disabled=true;toast('Running passive vulnerability assessment...','info');try{var r=await api('/intel/vuln-assess',{method:'POST',body:{domain:d}});store_domain_intel_result=r;toast('Assessment complete: Grade '+r.overall_grade,'success');loadIntelResults(d);document.getElementById('intel-results').style.display=''}catch(e){toast(e.message||'Failed','error')}document.getElementById('btn-vuln').disabled=false}
+loadIntelHistory();document.getElementById('intel-results').style.display='none'}
+async function removeIntel(domain){await api('/intel/remove/'+encodeURIComponent(domain),{method:'DELETE'});toast('Removed '+domain,'info');loadIntelHistory()}
+document.getElementById('intel-domain').addEventListener('keydown',function(e){if(e.key==='Enter')startInvestigation()});
+async function refreshCorrelations(){try{const c=await api('/intel/correlations');const g=await api('/intel/graph');const d=await api('/intel/domains');if(!d.domains||d.domains.length<2){document.getElementById('corr-empty').style.display='';document.getElementById('corr-content').style.display='none';return}document.getElementById('corr-empty').style.display='none';document.getElementById('corr-content').style.display='';
+document.getElementById('corr-stats').innerHTML='<div class="stat-card"><div class="stat-value stat-accent">'+d.domains.length+'</div><div class="stat-label">Domains</div></div><div class="stat-card"><div class="stat-value stat-blue">'+c.count+'</div><div class="stat-label">Correlations</div></div><div class="stat-card"><div class="stat-value stat-green">'+(c.correlations.filter(function(x){return x.strength>=0.7}).length)+'</div><div class="stat-label">Strong Links</div></div>';
+var corrs=c.correlations||[];
+var listHtml=corrs.length?'<div class="card"><div class="card-header"><span class="card-title">All Correlations</span></div>'+corrs.map(function(cr){var sc=cr.strength>=0.7?'strength-high':cr.strength>=0.5?'strength-med':'strength-low';return '<div class="corr-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:600;color:var(--t1)">'+esc(cr.key)+'</span><span class="corr-strength '+sc+'">'+Math.round(cr.strength*100)+'%</span></div><div style="font-size:.82rem;color:var(--t2);margin-bottom:4px">'+esc(cr.description)+'</div><div style="display:flex;flex-wrap:wrap;gap:4px">'+cr.domains.map(function(dd){return '<span class="intel-tag intel-tag-blue">'+esc(dd)+'</span>'}).join('')+'</div></div>'}).join('')+'</div>':'';
+document.getElementById('corr-list').innerHTML=listHtml;drawGraph(g)}catch(e){console.error(e)}}
+function drawGraph(g){var canvas=document.getElementById('corr-canvas');var ctx=canvas.getContext('2d');var dpr=window.devicePixelRatio||1;var rect=canvas.getBoundingClientRect();canvas.width=rect.width*dpr;canvas.height=rect.height*dpr;ctx.scale(dpr,dpr);var w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);if(!g.nodes||!g.nodes.length)return;
+var nodes=g.nodes;var edges=g.edges||[];var nodeMap={};var cx=w/2,cy=h/2,radius=Math.min(w,h)*0.35;
+nodes.forEach(function(n,i){var angle=2*Math.PI*i/nodes.length-Math.PI/2;n.x=cx+radius*Math.cos(angle);n.y=cy+radius*Math.sin(angle);nodeMap[n.id]=n});
+edges.forEach(function(e){var src=nodeMap[e.source];var tgt=nodeMap[e.target];if(!src||!tgt)return;var alpha=Math.max(0.15,e.strength*0.8);ctx.beginPath();ctx.moveTo(src.x,src.y);ctx.lineTo(tgt.x,tgt.y);ctx.strokeStyle=e.strength>=0.7?'rgba(248,113,113,'+alpha+')':e.strength>=0.5?'rgba(251,191,36,'+alpha+')':'rgba(96,165,250,'+alpha+')';ctx.lineWidth=1+e.strength*3;ctx.stroke()});
+nodes.forEach(function(n){ctx.beginPath();ctx.arc(n.x,n.y,20,0,Math.PI*2);ctx.fillStyle='#1a1b23';ctx.fill();ctx.strokeStyle='#c9a44c';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#e5e7eb';ctx.font='11px "DM Sans",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';var label=n.label.length>16?n.label.substring(0,14)+'..':n.label;ctx.fillText(label,n.x,n.y)})}
+loadIntelHistory();
+
+</script>
 </body>
 </html>
-

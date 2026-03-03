@@ -1,51 +1,149 @@
 # Ariadne
 
-> Ariadne is an advanced tool used to scan, map, and archive a wide variety of websites.
+**Web Scanner, Mapper & Archiver**
 
-![License](https://img.shields.io/badge/license-GNU_GPLv3-green) ![Version](https://img.shields.io/badge/version-v.030-blue) ![Language](https://img.shields.io/badge/language-PYTHON-yellow) 
+A powerful reconnaissance and archiving tool that crawls websites, discovers subdomains, checks security headers, and preserves pages both locally and on the Wayback Machine — all from a clean dark-themed web UI.
 
-## 📋 Table of Contents
-
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-
-## ℹ️ Project Information
-
-- **👤 Author:** dwightsabeast
-- **📦 Version:** v.030
-- **📄 License:** GNU GPLv3 
-- **🏷️ Keywords:** archival, OSINT, site-discovery
+---
 
 ## Features
 
-![Ariadne_v 030](https://github.com/user-attachments/assets/37068fe5-4e8d-49e9-a4a6-19070dd095ca)
+| Category | Capabilities |
+|---|---|
+| **Site Scanning** | Recursive crawl with configurable depth (1-5), status codes, response times, content types, page titles, link extraction |
+| **Subdomain Discovery** | Passive (crt.sh + DNS records) and active brute-force with wildcard detection |
+| **Archiving** | Save to Archive.org, download pages locally with metadata headers |
+| **Diff Detection** | Compare live pages against their latest Wayback Machine snapshot |
+| **Security Analysis** | Audit 9 security headers (HSTS, CSP, X-Frame-Options, etc.) |
+| **Broken Link Checker** | HEAD-request validation of all discovered links |
+| **Export** | CSV export for scan results and subdomains, XML sitemap generation |
+| **Scheduling** | Recurring scans with configurable intervals, depth, and archive options |
+| **Proxy Support** | Load proxies from file with optional rotation |
 
-
-This tool enables users to scan a top level domain with up to 5 levels of depth, or "clicks", including the option to follow external links beyond the initial domain. The level and reach of Ariadne's scans ensures all links are found. Ariande also features robust subdomain discovery tool complete with passive and active discovery methods, a wildcard detection system, and the ability to brute force subdomain searches. After these scans have completed, the tool allows users to perform 404 broken link checks, scans for key security headers, and will generate a sitemap on-the-fly.
-
-<div align="center"><img width="764" height="362" alt="image" src="https://github.com/user-attachments/assets/d4b86a24-3639-4d8c-bdc0-2a8f2a256709" /></div>
-
-When the user has sufficiently sluethed a site, Ariadne gives the option to export to a .csv file, and archive all discovered links, sites, and subdomains. Before the user archives anything, they are given the option to diff anything found during a scan. This diff function allows users to see if any changes have been made to the given page since the last time that page was saved to the Internet Archive. This diff function occurs during scheduled scans in order to minimize archiving unchanged pages.
-
-<div align="center"><img width="813" height="379" alt="image" src="https://github.com/user-attachments/assets/f99932ef-632a-4158-b65f-161a35d470ca" /></div>
+---
 
 ## Prerequisites
 
-[Python 3.14.0](https://www.python.org/downloads/ "Python 3.14.0") or later
+- **Python 3.10+**
+- pip (comes with Python)
 
-## Installation
+---
 
-Download and unzip the release into a convenient folder.
+## Quick Start
 
-<div align="center"><img width="846" height="674" alt="Screenshot 2025-10-20 183452" src="https://github.com/user-attachments/assets/e730a953-206b-4e8d-900f-726fb1430332" /></div>
+### Windows
+```
+start.bat
+```
 
-Run ```start.bat``` (this will create a venv folder and install required Python dependencies on your first startup).
+### Linux / macOS
+```bash
+chmod +x start.sh
+./start.sh
+```
 
-<div align="center"><img width="685" height="356" alt="image" src="https://github.com/user-attachments/assets/2ab6a8b9-82ca-4170-96b3-6249da5ec2f8" /></div>
+Both scripts will create a virtual environment, install dependencies, and launch the backend on `http://localhost:5000`.
 
+Open your browser to **http://localhost:5000** — the UI is served directly by Flask.
 
-Run ```index.html```.
+---
 
-<div align="center"><img width="640" height="349" alt="image" src="https://github.com/user-attachments/assets/951978d2-2748-4e5b-ac05-0b616a17570e" /></div>
+## Manual Setup
 
+```bash
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python backend.py
+```
+
+---
+
+## Project Structure
+
+```
+ariadne/
+├── backend.py          # Flask API server (all backend logic)
+├── index.html          # Single-page frontend (HTML + CSS + JS)
+├── requirements.txt    # Python dependencies
+├── settings.json       # Scanner configuration
+├── schedules.json      # Saved scan schedules
+├── subdomains.txt      # Wordlist for brute-force discovery
+├── proxies.txt         # Proxy list (one per line)
+├── start.bat           # Windows launcher
+├── start.sh            # Linux/macOS launcher
+├── archives/           # Locally saved page snapshots
+├── exports/            # CSV and sitemap output
+└── logs/               # Application logs
+```
+
+---
+
+## Configuration
+
+Edit `settings.json` or use the Settings page in the UI:
+
+| Setting | Default | Description |
+|---|---|---|
+| `max_depth` | 3 | Maximum crawl depth |
+| `max_threads` | 10 | Concurrent threads for scanning |
+| `request_timeout` | 15 | HTTP timeout in seconds |
+| `delay_between_requests` | 0.2 | Pause between requests (seconds) |
+| `follow_external` | false | Follow links to other domains |
+| `user_agent` | Ariadne/1.0 | HTTP User-Agent string |
+| `respect_robots` | true | Honor robots.txt |
+| `subdomain_threads` | 20 | Threads for brute-force subdomain scan |
+| `subdomain_timeout` | 5 | DNS resolution timeout |
+| `proxy_enabled` | false | Route requests through proxies |
+| `proxy_rotate` | false | Rotate through proxy list |
+
+---
+
+## Proxy Setup
+
+Add proxies to `proxies.txt`, one per line:
+
+```
+http://proxy1:8080
+socks5://proxy2:1080
+http://user:pass@proxy3:3128
+```
+
+Enable in Settings and toggle proxy on.
+
+---
+
+## API Endpoints
+
+All endpoints are prefixed with `/api`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/scan/start` | Start a website scan |
+| GET | `/scan/progress` | Poll scan progress |
+| POST | `/scan/cancel` | Cancel running scan |
+| GET | `/scan/results` | Get scan results |
+| POST | `/subdomains/start` | Start subdomain discovery |
+| GET | `/subdomains/progress` | Poll subdomain progress |
+| GET | `/subdomains/results` | Get discovered subdomains |
+| POST | `/archive/save` | Save URL(s) to Archive.org + local |
+| POST | `/archive/check` | Check Wayback Machine availability |
+| POST | `/archive/diff` | Diff live page vs latest snapshot |
+| GET | `/archive/local/list` | List local archive files |
+| GET | `/archive/local/<file>` | Download archived file |
+| POST | `/tools/check-url` | Quick URL status + header check |
+| POST | `/tools/broken-links` | Check all links from last scan |
+| POST | `/export/csv` | Export results as CSV |
+| POST | `/export/sitemap` | Generate XML sitemap |
+| GET | `/schedules` | List all schedules |
+| POST | `/schedules` | Create a schedule |
+| DELETE | `/schedules/<id>` | Delete a schedule |
+| POST | `/schedules/<id>/toggle` | Enable/disable schedule |
+| GET | `/settings` | Get current settings |
+| POST | `/settings` | Update settings |
+
+---
+
+## License
+
+[GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
