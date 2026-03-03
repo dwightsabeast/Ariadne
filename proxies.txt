@@ -1,0 +1,2 @@
+# Proxy addresses, one per line
+# Format: http://host:port
