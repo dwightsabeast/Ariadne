@@ -118,6 +118,22 @@ input[type="text"]::placeholder{color:var(--t3)}
 .strength-high{background:rgba(248,113,113,.2);color:#f87171}
 .strength-med{background:rgba(251,191,36,.2);color:#fbbf24}
 .strength-low{background:rgba(96,165,250,.2);color:#60a5fa}
+.proxy-row{display:flex;align-items:center;gap:8px;padding:10px;margin-bottom:6px;background:var(--s0);border-radius:var(--r);border-left:3px solid var(--s1);font-size:.82rem;transition:border-color .2s}
+.proxy-row.healthy{border-left-color:var(--grn)}
+.proxy-row.dead{border-left-color:var(--red)}
+.proxy-row.disabled{opacity:.5;border-left-color:var(--s1)}
+.proxy-row.auto-disabled{border-left-color:#fb923c;opacity:.7}
+.proxy-url{font-family:var(--m);color:var(--blu);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proxy-label{color:var(--t3);font-size:.75rem;margin-left:4px}
+.proxy-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:.7rem;font-weight:600;text-transform:uppercase}
+.proxy-badge-healthy{background:rgba(52,211,153,.15);color:var(--grn)}
+.proxy-badge-dead{background:rgba(248,113,113,.15);color:var(--red)}
+.proxy-badge-unknown{background:rgba(156,163,175,.15);color:var(--t3)}
+.proxy-badge-disabled{background:rgba(251,146,60,.15);color:#fb923c}
+.proxy-badge-socks{background:rgba(167,139,250,.15);color:#a78bfa}
+.proxy-badge-http{background:rgba(96,165,250,.15);color:var(--blu)}
+.proxy-stat{color:var(--t3);font-size:.72rem;white-space:nowrap}
+.proxy-actions{display:flex;gap:4px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -300,11 +316,23 @@ input[type="text"]::placeholder{color:var(--t3)}
 <div class="input-row"><span class="input-label" style="width:180px">Delay between requests</span><input type="number" id="set-delay" class="compact-input" min="0" max="10" step="0.1"></div>
 <div class="input-row"><span class="input-label" style="width:180px">User Agent</span><input type="text" id="set-ua" style="flex:1"></div>
 </div>
-<div class="card"><div class="card-title" style="margin-bottom:16px">Proxy</div>
-<div class="input-row">
+<div class="card"><div class="card-header"><span class="card-title">Proxy Management</span><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="healthCheckAll()">Health Check All</button><button class="btn btn-secondary btn-sm" onclick="toggleBulkAdd()">Bulk Add</button></div></div>
+<div style="display:flex;gap:16px;margin-bottom:12px">
 <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle" id="set-proxy-enabled"></div><span class="toggle-label">Enable proxy</span></div>
 <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle" id="set-proxy-rotate"></div><span class="toggle-label">Rotate proxies</span></div>
 </div>
+<div style="display:flex;gap:8px;margin-bottom:12px">
+<input type="text" id="proxy-add-input" class="url-input" placeholder="http://host:port or socks5://user:pass@host:port" style="flex:1" spellcheck="false">
+<input type="text" id="proxy-add-label" style="width:140px" placeholder="Label (optional)">
+<button class="btn btn-primary btn-sm" onclick="addProxy()">Add</button>
+<button class="btn btn-secondary btn-sm" onclick="testProxyInput()">Test</button>
+</div>
+<div id="proxy-bulk-area" style="display:none;margin-bottom:12px">
+<textarea id="proxy-bulk-text" style="width:100%;height:100px;background:var(--s0);color:var(--t1);border:1px solid var(--s1);border-radius:var(--r);padding:8px;font-family:var(--m);font-size:.82rem;resize:vertical" placeholder="One proxy per line. Supports http://, https://, socks5://, user:pass@host:port"></textarea>
+<button class="btn btn-primary btn-sm" onclick="bulkAddProxies()" style="margin-top:6px">Import All</button>
+</div>
+<div id="proxy-list-container"></div>
+<div id="proxy-test-result" style="display:none;margin-top:8px;padding:8px;border-radius:var(--r);font-size:.82rem"></div>
 </div>
 <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
 </div>
@@ -459,6 +487,19 @@ var statCount=0;if(d.analytics)statCount+=Object.keys(d.analytics).length;var ca
 document.getElementById('intel-summary-stats').innerHTML='<div class="stat-card"><div class="stat-value stat-accent">'+catsDone+'</div><div class="stat-label">Intel Categories</div></div><div class="stat-card"><div class="stat-value stat-blue">'+statCount+'</div><div class="stat-label">Tracking IDs</div></div><div class="stat-card"><div class="stat-value stat-green">'+(d.tech?Object.keys(d.tech).length:0)+'</div><div class="stat-label">Technologies</div></div>'}catch(e){console.error(e)}}
 async function loadIntelHistory(){try{const d=await api("/intel/domains");var el=document.getElementById("intel-history");if(!d.domains||!d.domains.length){el.innerHTML="";return}var items="";d.domains.forEach(function(dom){items+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--s1)"><div><span style="font-family:var(--m);color:var(--blu);cursor:pointer" data-view-domain="'+dom.domain+'">'+esc(dom.domain)+'</span><span style="color:var(--t3);font-size:.78rem;margin-left:8px">'+dom.categories.length+' categories</span></div><button class="btn btn-secondary btn-sm" data-remove-domain="'+dom.domain+'">Remove</button></div>'});el.innerHTML='<div class="card"><div class="card-header"><span class="card-title">Investigated Domains</span><button class="btn btn-danger btn-sm" onclick="clearAllIntel()">Clear All</button></div>'+items+'</div>';el.querySelectorAll("[data-view-domain]").forEach(function(btn){btn.addEventListener("click",function(){loadIntelResults(this.dataset.viewDomain);document.getElementById("intel-results").style.display=""})});el.querySelectorAll("[data-remove-domain]").forEach(function(btn){btn.addEventListener("click",function(){removeIntel(this.dataset.removeDomain)})})}catch(e){}}
 async function clearAllIntel(){await api('/intel/clear',{method:'POST'});toast('Intel cleared','info');async function runVulnAssess(){var d=document.getElementById('intel-domain').value.trim();if(!d)return toast('Enter a domain','error');document.getElementById('btn-vuln').disabled=true;toast('Running passive vulnerability assessment...','info');try{var r=await api('/intel/vuln-assess',{method:'POST',body:{domain:d}});store_domain_intel_result=r;toast('Assessment complete: Grade '+r.overall_grade,'success');loadIntelResults(d);document.getElementById('intel-results').style.display=''}catch(e){toast(e.message||'Failed','error')}document.getElementById('btn-vuln').disabled=false}
+
+async function loadProxyList(){try{var d=await api('/proxies');var el=document.getElementById('proxy-list-container');if(!d.proxies||!d.proxies.length){el.innerHTML='<div style="text-align:center;color:var(--t3);padding:16px;font-size:.82rem">No proxies configured</div>';return}var h='';d.proxies.forEach(function(p,idx){var hc=p.auto_disabled?'auto-disabled':!p.enabled?'disabled':p.health.status==='healthy'?'healthy':p.health.status==='dead'?'dead':'';var badge=p.auto_disabled?'<span class="proxy-badge proxy-badge-disabled">auto-off</span>':p.health.status==='healthy'?'<span class="proxy-badge proxy-badge-healthy">healthy</span>':p.health.status==='dead'?'<span class="proxy-badge proxy-badge-dead">dead</span>':'<span class="proxy-badge proxy-badge-unknown">untested</span>';var typeBadge='<span class="proxy-badge '+(p.type.startsWith('socks')?'proxy-badge-socks':'proxy-badge-http')+'">'+p.type+'</span>';var stats='';if(p.stats.requests>0){var rate=p.stats.successes>0?Math.round(p.stats.successes/p.stats.requests*100):0;stats='<span class="proxy-stat">'+p.stats.requests+' req, '+rate+'% ok'+(p.stats.avg_latency_ms?', ~'+p.stats.avg_latency_ms+'ms':'')+'</span>'}if(p.health.external_ip){stats+=' <span class="proxy-stat" style="color:var(--acc)">IP: '+p.health.external_ip+'</span>'}if(p.health.latency_ms){stats+=' <span class="proxy-stat">'+p.health.latency_ms+'ms</span>'}h+='<div class="proxy-row '+hc+'" data-proxy-idx="'+idx+'"><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+typeBadge+' '+badge+' <span class="proxy-url" title="'+esc(p.url)+'">'+esc(p.url)+'</span>'+(p.label&&p.label!==p.url?'<span class="proxy-label">'+esc(p.label)+'</span>':'')+'</div><div style="margin-top:3px">'+stats+'</div></div><div class="proxy-actions"><button class="btn btn-secondary btn-sm" data-proxy-test="'+idx+'">Test</button><button class="btn btn-secondary btn-sm" data-proxy-toggle="'+idx+'">'+(!p.enabled||p.auto_disabled?'Enable':'Disable')+'</button><button class="btn btn-danger btn-sm" data-proxy-remove="'+idx+'">X</button></div></div>'});el.innerHTML=h;window._proxyUrls=d.proxies.map(function(p){return p.url});el.querySelectorAll('[data-proxy-test]').forEach(function(b){b.addEventListener('click',function(){var u=window._proxyUrls[parseInt(this.dataset.proxyTest)];testExistingProxy(this,u)})});el.querySelectorAll('[data-proxy-toggle]').forEach(function(b){b.addEventListener('click',function(){var u=window._proxyUrls[parseInt(this.dataset.proxyToggle)];toggleExistingProxy(u)})});el.querySelectorAll('[data-proxy-remove]').forEach(function(b){b.addEventListener('click',function(){var u=window._proxyUrls[parseInt(this.dataset.proxyRemove)];removeProxy(u)})})}catch(e){console.error(e)}}
+async function addProxy(){var url=document.getElementById('proxy-add-input').value.trim();var label=document.getElementById('proxy-add-label').value.trim();if(!url)return toast('Enter a proxy URL','error');try{await api('/proxies',{method:'POST',body:{url:url,label:label}});document.getElementById('proxy-add-input').value='';document.getElementById('proxy-add-label').value='';toast('Proxy added','success');loadProxyList()}catch(e){toast(e.message||'Failed to add','error')}}
+document.getElementById('proxy-add-input').addEventListener('keydown',function(e){if(e.key==='Enter')addProxy()});
+async function testProxyInput(){var url=document.getElementById('proxy-add-input').value.trim();if(!url)return toast('Enter a proxy URL to test','error');var el=document.getElementById('proxy-test-result');el.style.display='block';el.style.background='var(--s0)';el.innerHTML='Testing proxy...';try{var r=await api('/proxies/test',{method:'POST',body:{url:url}});if(r.success){el.style.background='rgba(52,211,153,.1)';el.innerHTML='<span style="color:var(--grn)">\u2714 Healthy</span> \u2014 IP: <span style="font-family:var(--m)">'+esc(r.external_ip||'?')+'</span>, Latency: '+r.latency_ms+'ms'}else{el.style.background='rgba(248,113,113,.1)';el.innerHTML='<span style="color:var(--red)">\u2718 Failed</span> \u2014 '+esc(r.error||'Unknown error')}}catch(e){el.style.background='rgba(248,113,113,.1)';el.innerHTML='Error: '+esc(e.message||'Failed')}}
+async function testExistingProxy(btn,url){var orig=btn.textContent;btn.textContent='...';btn.disabled=true;try{var r=await api('/proxies/test',{method:'POST',body:{url:url}});if(r.success){toast('Proxy healthy: '+r.external_ip+' ('+r.latency_ms+'ms)','success')}else{toast('Proxy failed: '+(r.error||'Unknown'),'error')}loadProxyList()}catch(e){toast('Test error','error')}btn.textContent=orig;btn.disabled=false}
+async function toggleExistingProxy(url){try{await api('/proxies/toggle',{method:'POST',body:{url:url}});loadProxyList()}catch(e){toast('Failed','error')}}
+async function removeProxy(url){try{await api('/proxies/remove',{method:'POST',body:{url:url}});toast('Removed','info');loadProxyList()}catch(e){toast('Failed','error')}}
+function toggleBulkAdd(){var el=document.getElementById('proxy-bulk-area');el.style.display=el.style.display==='none'?'block':'none'}
+async function bulkAddProxies(){var text=document.getElementById('proxy-bulk-text').value.trim();if(!text)return toast('Paste proxy list first','error');try{var r=await api('/proxies/bulk',{method:'POST',body:{proxies:text}});toast('Added '+r.added+' proxies'+(r.skipped?' ('+r.skipped+' skipped)':''),'success');document.getElementById('proxy-bulk-text').value='';document.getElementById('proxy-bulk-area').style.display='none';loadProxyList()}catch(e){toast('Failed','error')}}
+async function healthCheckAll(){toast('Running health check on all proxies...','info');try{var r=await api('/proxies/health-check',{method:'POST'});toast(r.healthy+'/'+r.total+' proxies healthy','success');loadProxyList()}catch(e){toast('Health check failed','error')}}
+loadProxyList();
+
 loadIntelHistory();document.getElementById('intel-results').style.display='none'}
 async function removeIntel(domain){await api('/intel/remove/'+encodeURIComponent(domain),{method:'DELETE'});toast('Removed '+domain,'info');loadIntelHistory()}
 document.getElementById('intel-domain').addEventListener('keydown',function(e){if(e.key==='Enter')startInvestigation()});

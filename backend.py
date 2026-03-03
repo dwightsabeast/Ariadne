@@ -39,6 +39,13 @@ except ImportError:
 
 import base64
 
+try:
+    import socks
+    import sockshandler
+    HAS_SOCKS = True
+except ImportError:
+    HAS_SOCKS = False
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent
@@ -101,33 +108,242 @@ def save_settings(settings):
 
 settings = load_settings()
 
-# ─── Proxy Management ────────────────────────────────────────────────────────
+# ─── Proxy Management (Enhanced) ────────────────────────────────────────────
 
-def load_proxies():
-    proxies = []
+PROXY_DB_FILE = BASE_DIR / "proxies.json"
+
+def _default_proxy_entry(url, label=""):
+    """Create a proxy entry with default metadata."""
+    return {
+        "url": url,
+        "label": label or url,
+        "enabled": True,
+        "type": _detect_proxy_type(url),
+        "stats": {
+            "requests": 0,
+            "successes": 0,
+            "failures": 0,
+            "consecutive_failures": 0,
+            "last_used": None,
+            "last_success": None,
+            "last_failure": None,
+            "last_latency_ms": None,
+            "avg_latency_ms": None,
+            "external_ip": None,
+        },
+        "health": {
+            "status": "unknown",
+            "last_checked": None,
+            "latency_ms": None,
+            "external_ip": None,
+            "error": None,
+        },
+        "auto_disabled": False,
+        "auto_disable_threshold": 5,
+        "added": datetime.datetime.utcnow().isoformat(),
+    }
+
+
+def _detect_proxy_type(url):
+    """Detect proxy type from URL scheme."""
+    url_lower = url.lower()
+    if url_lower.startswith("socks5h://"):
+        return "socks5h"
+    elif url_lower.startswith("socks5://"):
+        return "socks5"
+    elif url_lower.startswith("socks4://"):
+        return "socks4"
+    elif url_lower.startswith("https://"):
+        return "https"
+    elif url_lower.startswith("http://"):
+        return "http"
+    else:
+        return "http"
+
+
+def _normalize_proxy_url(raw):
+    """Normalize a proxy URL, adding scheme if missing."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    # Handle user:pass@host:port without scheme
+    if "://" not in raw:
+        raw = "http://" + raw
+    return raw
+
+
+def load_proxy_db():
+    """Load proxy database from JSON file. Migrate from old proxies.txt if needed."""
+    if PROXY_DB_FILE.exists():
+        try:
+            with open(PROXY_DB_FILE) as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+    # Migrate from old proxies.txt
     if PROXIES_FILE.exists():
+        old_proxies = []
         with open(PROXIES_FILE) as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
-                    proxies.append(line)
-    return proxies
+                    url = _normalize_proxy_url(line)
+                    if url:
+                        old_proxies.append(_default_proxy_entry(url, label=line))
+        if old_proxies:
+            save_proxy_db(old_proxies)
+            logger.info(f"Migrated {len(old_proxies)} proxies from proxies.txt")
+            return old_proxies
+    return []
 
 
-proxy_list = load_proxies()
-proxy_index = 0
-proxy_lock = threading.Lock()
+def save_proxy_db(proxy_list_data):
+    """Persist proxy database to JSON."""
+    with open(PROXY_DB_FILE, "w") as f:
+        json.dump(proxy_list_data, f, indent=2)
+
+
+# In-memory proxy state
+proxy_db = load_proxy_db()
+proxy_round_robin_idx = 0
+proxy_db_lock = threading.Lock()
 
 
 def get_proxy():
-    global proxy_index
-    if not settings.get("proxy_enabled") or not proxy_list:
+    """Get the next available proxy for a request. Returns requests-compatible dict or None."""
+    global proxy_round_robin_idx
+
+    if not settings.get("proxy_enabled") or not proxy_db:
         return None
-    with proxy_lock:
-        proxy = proxy_list[proxy_index % len(proxy_list)]
+
+    with proxy_db_lock:
+        # Filter to enabled and not auto-disabled
+        available = [p for p in proxy_db if p["enabled"] and not p.get("auto_disabled")]
+        if not available:
+            return None
+
         if settings.get("proxy_rotate"):
-            proxy_index += 1
-        return {"http": proxy, "https": proxy}
+            proxy_entry = available[proxy_round_robin_idx % len(available)]
+            proxy_round_robin_idx += 1
+        else:
+            proxy_entry = available[0]
+
+        url = proxy_entry["url"]
+        ptype = proxy_entry.get("type", "http")
+
+        # Record usage
+        proxy_entry["stats"]["last_used"] = datetime.datetime.utcnow().isoformat()
+        proxy_entry["stats"]["requests"] += 1
+
+    # Build the proxy dict for requests library
+    if ptype in ("socks5", "socks5h", "socks4"):
+        return {"http": url, "https": url}
+    else:
+        return {"http": url, "https": url}
+
+
+def record_proxy_result(proxy_url, success, latency_ms=None):
+    """Record the outcome of a request through a proxy."""
+    with proxy_db_lock:
+        for p in proxy_db:
+            if p["url"] == proxy_url:
+                stats = p["stats"]
+                now = datetime.datetime.utcnow().isoformat()
+                if success:
+                    stats["successes"] += 1
+                    stats["consecutive_failures"] = 0
+                    stats["last_success"] = now
+                    if latency_ms is not None:
+                        stats["last_latency_ms"] = latency_ms
+                        if stats["avg_latency_ms"] is None:
+                            stats["avg_latency_ms"] = latency_ms
+                        else:
+                            stats["avg_latency_ms"] = round(
+                                stats["avg_latency_ms"] * 0.8 + latency_ms * 0.2
+                            )
+                else:
+                    stats["failures"] += 1
+                    stats["consecutive_failures"] += 1
+                    stats["last_failure"] = now
+                    # Auto-disable if threshold exceeded
+                    threshold = p.get("auto_disable_threshold", 5)
+                    if stats["consecutive_failures"] >= threshold:
+                        p["auto_disabled"] = True
+                        logger.warning(
+                            f"Proxy auto-disabled after {threshold} failures: {proxy_url}"
+                        )
+                break
+
+
+def test_single_proxy(proxy_url, timeout=15):
+    """Test a proxy by making a request to a known endpoint.
+    Returns dict with success, latency, external_ip, error."""
+    result = {
+        "proxy": proxy_url,
+        "success": False,
+        "latency_ms": None,
+        "external_ip": None,
+        "error": None,
+    }
+    try:
+        ptype = _detect_proxy_type(proxy_url)
+        proxies = {"http": proxy_url, "https": proxy_url}
+
+        start = time.time()
+        resp = requests.get(
+            "https://httpbin.org/ip",
+            proxies=proxies,
+            timeout=timeout,
+            headers={"User-Agent": settings.get("user_agent", "Ariadne/1.0")},
+        )
+        elapsed = round((time.time() - start) * 1000)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            result["success"] = True
+            result["latency_ms"] = elapsed
+            result["external_ip"] = data.get("origin", "").split(",")[0].strip()
+        else:
+            result["error"] = f"HTTP {resp.status_code}"
+    except requests.exceptions.ProxyError as e:
+        result["error"] = f"Proxy error: {str(e)[:150]}"
+    except requests.exceptions.ConnectTimeout:
+        result["error"] = "Connection timed out"
+    except requests.exceptions.ConnectionError as e:
+        result["error"] = f"Connection failed: {str(e)[:150]}"
+    except Exception as e:
+        result["error"] = str(e)[:200]
+
+    # Update health in proxy_db
+    with proxy_db_lock:
+        for p in proxy_db:
+            if p["url"] == proxy_url:
+                p["health"] = {
+                    "status": "healthy" if result["success"] else "dead",
+                    "last_checked": datetime.datetime.utcnow().isoformat(),
+                    "latency_ms": result["latency_ms"],
+                    "external_ip": result["external_ip"],
+                    "error": result["error"],
+                }
+                if result["success"]:
+                    p["stats"]["external_ip"] = result["external_ip"]
+                break
+        save_proxy_db(proxy_db)
+
+    return result
+
+
+def health_check_all():
+    """Run health check on all proxies. Returns list of results."""
+    results = []
+    with proxy_db_lock:
+        urls = [p["url"] for p in proxy_db]
+    for url in urls:
+        r = test_single_proxy(url, timeout=12)
+        results.append(r)
+        time.sleep(0.3)
+    return results
 
 
 # ─── HTTP Session ────────────────────────────────────────────────────────────
@@ -3188,6 +3404,162 @@ def exposed_paths_endpoint():
     ua = settings.get('user_agent', 'Ariadne/1.0')
     results = check_exposed_paths(domain, ua=ua)
     return jsonify({'domain': domain, 'results': results, 'count': len(results)})
+
+
+
+# --- Proxy Management Endpoints ---
+
+@app.route("/api/proxies", methods=["GET"])
+def list_proxies():
+    with proxy_db_lock:
+        return jsonify({"proxies": proxy_db, "count": len(proxy_db)})
+
+
+@app.route("/api/proxies", methods=["POST"])
+def add_proxy():
+    data = request.json
+    raw_url = data.get("url", "").strip()
+    label = data.get("label", "").strip()
+    url = _normalize_proxy_url(raw_url)
+    if not url:
+        return jsonify({"error": "Proxy URL required"}), 400
+    with proxy_db_lock:
+        # Check for duplicates
+        for p in proxy_db:
+            if p["url"] == url:
+                return jsonify({"error": "Proxy already exists"}), 409
+        entry = _default_proxy_entry(url, label or raw_url)
+        proxy_db.append(entry)
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True, "proxy": entry})
+
+
+@app.route("/api/proxies/bulk", methods=["POST"])
+def add_proxies_bulk():
+    data = request.json
+    raw_text = data.get("proxies", "")
+    added = 0
+    skipped = 0
+    with proxy_db_lock:
+        existing_urls = {p["url"] for p in proxy_db}
+        for line in raw_text.strip().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            url = _normalize_proxy_url(line)
+            if url and url not in existing_urls:
+                proxy_db.append(_default_proxy_entry(url, label=line))
+                existing_urls.add(url)
+                added += 1
+            else:
+                skipped += 1
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+
+@app.route("/api/proxies/remove", methods=["POST"])
+def remove_proxy():
+    data = request.json
+    url = data.get("url", "").strip()
+    with proxy_db_lock:
+        proxy_db[:] = [p for p in proxy_db if p["url"] != url]
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/proxies/clear", methods=["POST"])
+def clear_proxies():
+    with proxy_db_lock:
+        proxy_db.clear()
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/proxies/toggle", methods=["POST"])
+def toggle_proxy():
+    data = request.json
+    url = data.get("url", "").strip()
+    with proxy_db_lock:
+        for p in proxy_db:
+            if p["url"] == url:
+                p["enabled"] = not p["enabled"]
+                if p["enabled"]:
+                    p["auto_disabled"] = False
+                    p["stats"]["consecutive_failures"] = 0
+                save_proxy_db(proxy_db)
+                return jsonify({"ok": True, "enabled": p["enabled"]})
+    return jsonify({"error": "Proxy not found"}), 404
+
+
+@app.route("/api/proxies/re-enable", methods=["POST"])
+def reenable_proxy():
+    data = request.json
+    url = data.get("url", "").strip()
+    with proxy_db_lock:
+        for p in proxy_db:
+            if p["url"] == url:
+                p["auto_disabled"] = False
+                p["enabled"] = True
+                p["stats"]["consecutive_failures"] = 0
+                save_proxy_db(proxy_db)
+                return jsonify({"ok": True})
+    return jsonify({"error": "Proxy not found"}), 404
+
+
+@app.route("/api/proxies/test", methods=["POST"])
+def test_proxy_endpoint():
+    data = request.json
+    url = data.get("url", "").strip()
+    url = _normalize_proxy_url(url)
+    if not url:
+        return jsonify({"error": "Proxy URL required"}), 400
+    result = test_single_proxy(url)
+    return jsonify(result)
+
+
+@app.route("/api/proxies/health-check", methods=["POST"])
+def health_check_endpoint():
+    if not proxy_db:
+        return jsonify({"error": "No proxies configured"}), 400
+    results = health_check_all()
+    healthy = sum(1 for r in results if r["success"])
+    return jsonify({"results": results, "total": len(results), "healthy": healthy})
+
+
+@app.route("/api/proxies/reorder", methods=["POST"])
+def reorder_proxies():
+    data = request.json
+    urls_ordered = data.get("urls", [])
+    with proxy_db_lock:
+        url_map = {p["url"]: p for p in proxy_db}
+        reordered = []
+        for url in urls_ordered:
+            if url in url_map:
+                reordered.append(url_map.pop(url))
+        # Append any remaining (not in the new order)
+        reordered.extend(url_map.values())
+        proxy_db[:] = reordered
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/proxies/reset-stats", methods=["POST"])
+def reset_proxy_stats():
+    data = request.json
+    url = data.get("url", "")
+    with proxy_db_lock:
+        for p in proxy_db:
+            if not url or p["url"] == url:
+                p["stats"] = {
+                    "requests": 0, "successes": 0, "failures": 0,
+                    "consecutive_failures": 0, "last_used": None,
+                    "last_success": None, "last_failure": None,
+                    "last_latency_ms": None, "avg_latency_ms": None,
+                    "external_ip": None,
+                }
+                p["auto_disabled"] = False
+        save_proxy_db(proxy_db)
+    return jsonify({"ok": True})
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
